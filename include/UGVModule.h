@@ -21,8 +21,10 @@ enum error_state {
 	ERR_NO_DATA,
 	ERR_INVALID_DATA,
 	ERR_SM,
-	ERR_CONNECTION
-	// Define your own additional error types as needed
+	ERR_CONNECTION,
+	// Additional error types defined for this solution
+	ERR_AUTHENTICATION,		// Server rejected the zID authentication
+	ERR_TIMEOUT				// Expected data did not arrive in time
 };
 
 ref class UGVModule abstract
@@ -60,13 +62,30 @@ ref class UGVModule abstract
 				case SUCCESS:
 					std::cout << "Success." << std::endl;
 					break;
+				case ERR_STARTUP:
+					std::cout << "ERROR: Module failed to start." << std::endl;
+					break;
 				case ERR_NO_DATA:
 					std::cout << "ERROR: No Data Available." << std::endl;
 					break;
 				case ERR_INVALID_DATA:
 					std::cout << "ERROR: Invalid Data Received." << std::endl;
 					break;
-				// ADD PRINTOUTS FOR OTHER ERROR TYPES
+				case ERR_SM:
+					std::cout << "ERROR: Shared memory access failed." << std::endl;
+					break;
+				case ERR_CONNECTION:
+					std::cout << "ERROR: Network connection failed." << std::endl;
+					break;
+				case ERR_AUTHENTICATION:
+					std::cout << "ERROR: Authentication rejected by server." << std::endl;
+					break;
+				case ERR_TIMEOUT:
+					std::cout << "ERROR: Timed out waiting for data." << std::endl;
+					break;
+				default:
+					std::cout << "ERROR: Unknown error code " << static_cast<int>(error) << "." << std::endl;
+					break;
 			}
 		}
 

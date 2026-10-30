@@ -164,23 +164,45 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
 
 ## 8. Current status
 
-**Branch `main`:** starter code committed as received (minus build junk), plus this file, CLAUDE.md
-and README. No module code written yet. Nothing has been built on this machine yet.
+**Branch `main`:** skeleton complete. All seven modules have header + cpp with the correct
+inheritance, every base-class function overridden, private members and helper declarations in place,
+and empty bodies. `Main.cpp` launches TMM. `SMObjects.h` has `SM_CrashAvoidance` and the critical
+masks; `UGVModule.h` has two extra error codes and full `printError`; `NetworkedModule.h` has the
+port numbers and `STUDENT_ID`. Builds clean (0 errors, 0 warnings) and the exe runs and exits.
 
-**Branch `progress-check`:** not created yet.
+**Branch `progress-check`:** in progress (see push log).
 **Branch `full-build`:** not created yet.
+
+### Build notes (important)
+
+- Build from the command line with the toolset override, because v143 is not installed here:
+  ```
+  "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" "MTRN3500 Assignment 2.sln" -p:Configuration=Debug -p:Platform=x64 -p:PlatformToolset=v145 -m -v:m -nologo
+  ```
+  The `.vcxproj` still says v143 on purpose so the student-facing project is untouched.
+- Output lands in `Executables\MTRN3500 Assignment 2.exe` (git-ignored).
+- **Include-order trap:** `ControllerInterface.h` includes `<Windows.h>`. It must be included
+  *before* `UGVModule.h`/`SMObjects.h` (which do `using namespace System;`), or you get
+  `error C3699 … IServiceProvider`. `Controller.h` and `TMM.h` are ordered accordingly, with comments.
+  Worth a note in the spec; every student will hit this.
+- Aidan's rule: **do not launch or unzip the simulator** from Claude. Test networking against a
+  small Python stand-in server instead (scratch script `mock_lidar.py` reproduces the LiDAR service:
+  auth, `sRN LMDscandata`, 361-point `DIST1` telegram).
 
 ## 9. Next steps (in order)
 
-1. On `main`: skeleton commit — all seven module header/cpp pairs with correct inheritance and
-   overridden functions, empty bodies, registered in the `.vcxproj`; `Main.cpp` launching TMM;
-   `SM_CrashAvoidance` added to SMObjects.h; confirm it builds with MSBuild. Push, update this file.
-2. Create `progress-check` from `main`: TMM shared-memory setup, thread start, heartbeat monitor,
-   `q`-key routine shutdown; LiDAR connect + auth + `sRN LMDscandata` + parse + Cartesian conversion +
-   readable terminal print. Test against the simulator. Push, update this file.
-3. Create `full-build` from `main` (or from `progress-check`, Aidan to confirm): the rest.
+1. ~~Skeleton on `main`.~~ Done.
+2. `progress-check` branch: TMM shared-memory setup, thread start order with barrier, heartbeat
+   monitor, critical-failure shutdown, non-critical restart, `q`-key routine shutdown, TMM-alive
+   signal; LiDAR connect + auth + `sRN LMDscandata` + parse + Cartesian conversion + readable print.
+   Other five modules run as heartbeat-only stubs so the shutdown demo covers all threads.
+   Build, test against the mock server, push, update this file.
+3. `full-build` branch from `progress-check` (Aidan to confirm): Parts 3–7 and the report.
 
 ## 10. Push log (newest first)
+
+- **2026-10-30** — `main`: skeleton commit. Seven module file pairs, project file updated, provided
+  headers extended, builds clean with the v145 override, exe runs. Progress-check item (i) satisfied.
 
 - **2026-10-30** — `main`: added Aidan's verbatim instruction and the originating session name to
   HANDOVER.md. Docs only; skeleton header edits are in progress locally and not yet committed.
