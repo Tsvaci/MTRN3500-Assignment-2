@@ -38,6 +38,20 @@ controller. A crash-avoidance thread inhibits motion near obstacles.
    simulator is in the `Ass 2` folder. Build and run against the simulator before reporting done.
 7. Commit messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
+### Aidan's instruction, verbatim (30 Oct 2026)
+
+> Thank you for picking up on those, I wrote this when I was tired. That skeleton commit sounds
+> positive, I want to develop the code in two separate branches. One branch for the progress check
+> as that will be a marking point I will be examining, and I also want to do the full build on a
+> separate branch. Let's do the skeleton commit and the progress check portion first. I also want
+> you to write an instructional in the github repo for when I move to a fresh chat. This md should
+> be updated everytime a push is made and it should be sufficient in catching up a fresh claude
+> chat up to speed.
+
+The originating Claude Code session is named **"MTRN3500 Ass 2 Alpha"**
+(ID `f54a262b-a1d1-4e74-9fe1-af1ee8879a3a`, started in `C:\Users\User`). Resume it with
+`claude --resume f54a262b-a1d1-4e74-9fe1-af1ee8879a3a` from that folder if the transcript is needed.
+
 ## 3. Where things are
 
 | Item | Location |
@@ -168,4 +182,6 @@ and README. No module code written yet. Nothing has been built on this machine y
 
 ## 10. Push log (newest first)
 
+- **2026-10-30** — `main`: added Aidan's verbatim instruction and the originating session name to
+  HANDOVER.md. Docs only; skeleton header edits are in progress locally and not yet committed.
 - **2026-10-30** — `main`: starter code laid in, HANDOVER.md, CLAUDE.md, README. No code yet.
