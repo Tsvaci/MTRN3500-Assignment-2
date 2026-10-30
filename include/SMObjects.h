@@ -37,6 +37,21 @@ constexpr uint8_t bit_CRASHAVOIDANCE =  0b01000000;
 constexpr uint8_t CRITICALMASK =    bit_TM | bit_LASER | bit_VC | bit_CONTROLLER | bit_DISPLAY | bit_CRASHAVOIDANCE;
 constexpr uint8_t NONCRITICALMASK = bit_GPS;
 
+// Heartbeat timing shared by TMM and every module.
+// A module is considered dead if TMM has not seen its heartbeat for HEARTBEAT_TIMEOUT_MS.
+// A module considers TMM dead (and shuts itself down) if TMM's stopwatch exceeds TM_ALIVE_TIMEOUT_MS.
+constexpr int HEARTBEAT_TIMEOUT_MS = 2000;
+constexpr int TM_ALIVE_TIMEOUT_MS = 4000;
+constexpr int BARRIER_TIMEOUT_MS = 15000;   // Maximum wait for all threads to finish starting up
+
+// Position of a module's bit in the heartbeat/shutdown bytes, used as its index into WatchList.
+// bit_TM -> 0, bit_LASER -> 1, bit_GPS -> 2, bit_VC -> 3, bit_CONTROLLER -> 4, bit_DISPLAY -> 5, bit_CRASHAVOIDANCE -> 6
+inline int bitIndex(uint8_t bit) {
+    int index = 0;
+    while (bit > 1) { bit >>= 1; ++index; }
+    return index;
+}
+
 ref class SM_ThreadManagement
 {
 public:

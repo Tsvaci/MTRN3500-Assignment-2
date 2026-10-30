@@ -69,8 +69,7 @@ private:
     // Routine shutdown request from the keyboard ('q')
     bool shutdownKeyPressed();
 
-    // Timing constants (milliseconds)
-    literal int HEARTBEAT_TIMEOUT_MS = 2000;
+    // Timing constants (milliseconds). HEARTBEAT_TIMEOUT_MS lives in SMObjects.h because modules use it too.
     literal int MONITOR_PERIOD_MS = 50;
     literal int JOIN_TIMEOUT_MS = 3000;
     literal int THREAD_COUNT = 7;    // TMM + six modules, used for the start-up barrier
