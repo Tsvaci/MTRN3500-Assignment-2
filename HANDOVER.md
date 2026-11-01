@@ -34,9 +34,13 @@ controller. A crash-avoidance thread inhibits motion near obstacles.
 5. **Aidan directs; explain in plain language.** He is not a day-to-day coder. Lead with outcomes,
    give the numbers, keep code out of prose. Flag spec problems to him rather than silently
    working around them.
-6. **Verify, don't assume.** The machine has Visual Studio 2026 Community and MATLAB R2025b, and the
-   simulator is in the `Ass 2` folder. Build and run against the simulator before reporting done.
-7. Commit messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+6. **Verify, don't assume — but never launch or unzip the simulator.** The machine has Visual
+   Studio 2026 Community and MATLAB R2025b. Build, then test against the Python stand-in servers in
+   `tools/` (Aidan's order, 30 Oct 2026: "do not try launching or unzipping the simulator").
+   Aidan runs the real simulator himself.
+7. Commit messages end with the `Co-Authored-By:` line for whichever Claude model is doing the work.
+8. Keep `HANDOVER.md` identical on `main` and on the working branch: when you push a branch, copy the
+   updated file onto `main` too.
 
 ### Aidan's instruction, verbatim (30 Oct 2026)
 
@@ -118,10 +122,11 @@ Critical failure → full shutdown. Non-critical failure → restart that thread
 
 "weeder" = `127.0.0.1` for the simulator, `192.168.1.200` for the real robot (`WEEDER_ADDRESS` in NetworkedModule.h).
 
-**LiDAR angle convention (service details Fig. 1).** 0° points to the right-hand side (−Y of the
-device frame), 90° straight ahead (+X? — confirm against the figure), 180° to the left. 361 points at
-0.5° steps. Convert: x = r·cos θ, y = r·sin θ, with θ offset so that forward is consistent for the
-vehicle base frame. The display must be in the vehicle base frame.
+**LiDAR angle convention (service details Fig. 1).** 0° points to the vehicle's right, 90° straight
+ahead, 180° to the left (five of the figure's six labels agree; the "270°" label on +X contradicts
+them and is flagged to Aidan). 361 points at 0.5° steps. Vehicle base frame: x forward, y left.
+Convert (as implemented in `LiDAR.cpp`): **x = r·sin θ, y = −r·cos θ**, r in metres.
+The display must be in the vehicle base frame.
 
 **Controller.** Speed = right trigger forward, left trigger reverse. Steering = right-stick X. One
 button triggers shutdown. If controller disconnected → speed and steering zero. `ControllerInterface`
@@ -170,7 +175,29 @@ and empty bodies. `Main.cpp` launches TMM. `SMObjects.h` has `SM_CrashAvoidance`
 masks; `UGVModule.h` has two extra error codes and full `printError`; `NetworkedModule.h` has the
 port numbers and `STUDENT_ID`. Builds clean (0 errors, 0 warnings) and the exe runs and exits.
 
-**Branch `progress-check`:** in progress (see push log).
+**Branch `progress-check`:** complete and verified. Built from `main`. Contains:
+- `TMM.cpp` fully implemented: creates all SM objects, starts threads in the order Controller, LiDAR,
+  CrashAvoidance, VC, Display, GNSS, start-up `Barrier` with timeout (then nulled so restarts skip it),
+  heartbeat monitor with per-thread stopwatches, critical failure → full shutdown, non-critical
+  failure → restart, `q` key (via `_kbhit`/`_getch`) → routine shutdown, TMM-alive signal
+  (its own stopwatch, which every module checks in `getShutdownFlag`).
+- `LiDAR.cpp` fully implemented: connect, zID auth, `sRN LMDscandata` request, read-until-ETX,
+  parse `DIST1` block (scale, start angle, step, count, hex mm values), convert to metres in the
+  vehicle frame (x forward, y left), publish to `SM_Laser`, print 361 x,y pairs every 25th scan.
+- The other five modules are **heartbeat-only stubs** (connect/communicate return SUCCESS, loop
+  = heartbeat + sleep 100 ms) so TMM has six real threads to start, monitor and shut down.
+- `tools/mock_lidar.py` (stand-in LiDAR service, port 23000) and `tools/test_progress_check.py`
+  (harness: scan rate, server-loss path, and a `q` keystroke injected into the exe's console).
+
+Verified results (30 Oct 2026, mock server, not the simulator):
+| Check | Result |
+|---|---|
+| (i) class structure | all seven modules, correct inheritance, builds clean |
+| (ii) live LiDAR print | 361 pairs, wall at 2 m ahead → (2.00, 0.00) at index 180; post at 45° 0.8 m → (0.57, −0.57) at index 90; ~32 scans/s |
+| (iii) `q` shutdown | all six threads stopped and process exited 0.1 s after the keypress |
+| critical thread lost | LiDAR server killed → `ERR_CONNECTION` → TMM full shutdown 2.1 s later |
+| LiDAR absent at start | LiDAR thread exits after the barrier → TMM full shutdown at 2.3 s |
+
 **Branch `full-build`:** not created yet.
 
 ### Build notes (important)
@@ -185,21 +212,41 @@ port numbers and `STUDENT_ID`. Builds clean (0 errors, 0 warnings) and the exe r
   *before* `UGVModule.h`/`SMObjects.h` (which do `using namespace System;`), or you get
   `error C3699 … IServiceProvider`. `Controller.h` and `TMM.h` are ordered accordingly, with comments.
   Worth a note in the spec; every student will hit this.
-- Aidan's rule: **do not launch or unzip the simulator** from Claude. Test networking against a
-  small Python stand-in server instead (scratch script `mock_lidar.py` reproduces the LiDAR service:
-  auth, `sRN LMDscandata`, 361-point `DIST1` telegram).
+- Aidan's rule: **do not launch or unzip the simulator** from Claude. Test networking against the
+  Python stand-in servers in `tools/` instead (`mock_lidar.py` reproduces the LiDAR service: auth,
+  `sRN LMDscandata`, 361-point `DIST1` telegram). Run the harness from the repo root:
+  `python tools/test_progress_check.py` (needs the exe built first).
+- **Test-harness trap:** if you run the exe from Python with `stdout=PIPE` and don't read the pipe
+  continuously, the 7 KB scan print fills the pipe, `Console::Write` blocks, the LiDAR heartbeat
+  stops, and TMM "correctly" declares it dead. Always drain stdout on a thread (the harness does).
+- Scan rate against the mock is ~32/s with the 20 ms sleep in the LiDAR loop. If the real simulator
+  shows ~5/s, suspect Nagle + delayed ACK on its side (the mock needed `TCP_NODELAY`).
 
 ## 9. Next steps (in order)
 
 1. ~~Skeleton on `main`.~~ Done.
-2. `progress-check` branch: TMM shared-memory setup, thread start order with barrier, heartbeat
-   monitor, critical-failure shutdown, non-critical restart, `q`-key routine shutdown, TMM-alive
-   signal; LiDAR connect + auth + `sRN LMDscandata` + parse + Cartesian conversion + readable print.
-   Other five modules run as heartbeat-only stubs so the shutdown demo covers all threads.
-   Build, test against the mock server, push, update this file.
-3. `full-build` branch from `progress-check` (Aidan to confirm): Parts 3–7 and the report.
+2. ~~`progress-check` branch.~~ Done and verified. Aidan to review it as the Week 8 marking point.
+3. `full-build` branch, branched from `progress-check` (so TMM and LiDAR carry over): Parts 3–7
+   (GNSS decode + CRC, Controller, VC command stream, Display to MATLAB, CrashAvoidance), the
+   one-page report in `docs/`, then the GR-U01 bonus. Add mock servers for GNSS (replay
+   `GPSData.dat`), VC and display to `tools/` as needed. Aidan has not yet confirmed whether crash
+   avoidance is critical (current code: critical).
+4. Open questions for Aidan: Figure 1's "270°" label sits on the +X axis, which contradicts the
+   other five labels (they imply 0° = right, 90° = forward, 180° = left). The code follows the
+   five; confirm or correct the figure. Also: which student ID to put in `STUDENT_ID`
+   (currently the placeholder `5555555`; the mock accepts any 7 digits, the simulator may not).
+5. Aidan to run `progress-check` once against the real simulator himself (never done by Claude).
 
 ## 10. Push log (newest first)
+
+- **2026-11-02** — `progress-check` and `main`: docs only. Fixed standing order 6 (no simulator),
+  corrected the LiDAR conversion formula in §5, made `main`'s HANDOVER.md match. Re-ran
+  `tools/test_progress_check.py` on today's build: 32.1 scans/s, server loss → full shutdown 2.05 s
+  later, `q` → exit 0.1 s later, exit code 0. Still open: real `STUDENT_ID` (placeholder `5555555`
+  in `include/NetworkedModule.h`), crash-avoidance criticality, Figure 1 label, go-ahead for `full-build`.
+
+- **2026-10-30** — `progress-check` (new branch from `main`): full TMM and LiDAR, five
+  heartbeat-only stubs, `tools/` mock server + harness, verified as tabled in §8.
 
 - **2026-10-30** — `main`: skeleton commit. Seven module file pairs, project file updated, provided
   headers extended, builds clean with the v145 override, exe runs. Progress-check item (i) satisfied.
