@@ -34,9 +34,13 @@ controller. A crash-avoidance thread inhibits motion near obstacles.
 5. **Aidan directs; explain in plain language.** He is not a day-to-day coder. Lead with outcomes,
    give the numbers, keep code out of prose. Flag spec problems to him rather than silently
    working around them.
-6. **Verify, don't assume.** The machine has Visual Studio 2026 Community and MATLAB R2025b, and the
-   simulator is in the `Ass 2` folder. Build and run against the simulator before reporting done.
-7. Commit messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+6. **Verify, don't assume — but never launch or unzip the simulator.** The machine has Visual
+   Studio 2026 Community and MATLAB R2025b. Build, then test against the Python stand-in servers in
+   `tools/` (Aidan's order, 30 Oct 2026: "do not try launching or unzipping the simulator").
+   Aidan runs the real simulator himself.
+7. Commit messages end with the `Co-Authored-By:` line for whichever Claude model is doing the work.
+8. Keep `HANDOVER.md` identical on `main` and on the working branch: when you push a branch, copy the
+   updated file onto `main` too.
 
 ### Aidan's instruction, verbatim (30 Oct 2026)
 
@@ -118,10 +122,11 @@ Critical failure → full shutdown. Non-critical failure → restart that thread
 
 "weeder" = `127.0.0.1` for the simulator, `192.168.1.200` for the real robot (`WEEDER_ADDRESS` in NetworkedModule.h).
 
-**LiDAR angle convention (service details Fig. 1).** 0° points to the right-hand side (−Y of the
-device frame), 90° straight ahead (+X? — confirm against the figure), 180° to the left. 361 points at
-0.5° steps. Convert: x = r·cos θ, y = r·sin θ, with θ offset so that forward is consistent for the
-vehicle base frame. The display must be in the vehicle base frame.
+**LiDAR angle convention (service details Fig. 1).** 0° points to the vehicle's right, 90° straight
+ahead, 180° to the left (five of the figure's six labels agree; the "270°" label on +X contradicts
+them and is flagged to Aidan). 361 points at 0.5° steps. Vehicle base frame: x forward, y left.
+Convert (as implemented in `LiDAR.cpp`): **x = r·sin θ, y = −r·cos θ**, r in metres.
+The display must be in the vehicle base frame.
 
 **Controller.** Speed = right trigger forward, left trigger reverse. Steering = right-stick X. One
 button triggers shutdown. If controller disconnected → speed and steering zero. `ControllerInterface`
@@ -228,9 +233,17 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    avoidance is critical (current code: critical).
 4. Open questions for Aidan: Figure 1's "270°" label sits on the +X axis, which contradicts the
    other five labels (they imply 0° = right, 90° = forward, 180° = left). The code follows the
-   five; confirm or correct the figure.
+   five; confirm or correct the figure. Also: which student ID to put in `STUDENT_ID`
+   (currently the placeholder `5555555`; the mock accepts any 7 digits, the simulator may not).
+5. Aidan to run `progress-check` once against the real simulator himself (never done by Claude).
 
 ## 10. Push log (newest first)
+
+- **2026-11-02** — `progress-check` and `main`: docs only. Fixed standing order 6 (no simulator),
+  corrected the LiDAR conversion formula in §5, made `main`'s HANDOVER.md match. Re-ran
+  `tools/test_progress_check.py` on today's build: 32.1 scans/s, server loss → full shutdown 2.05 s
+  later, `q` → exit 0.1 s later, exit code 0. Still open: real `STUDENT_ID` (placeholder `5555555`
+  in `include/NetworkedModule.h`), crash-avoidance criticality, Figure 1 label, go-ahead for `full-build`.
 
 - **2026-10-30** — `progress-check` (new branch from `main`): full TMM and LiDAR, five
   heartbeat-only stubs, `tools/` mock server + harness, verified as tabled in §8.
