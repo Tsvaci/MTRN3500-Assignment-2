@@ -117,7 +117,7 @@ Critical failure → full shutdown. Non-critical failure → restart that thread
 **Network services (service details doc).**
 | Service | Address | Port | Auth | Notes |
 |---|---|---|---|---|
-| LiDAR | weeder | 23000 | yes | send `<zID digits>\n` (8 chars), expect `OK\n`. Then `0x02 sRN LMDscandata 0x03`. Reply is `sRA LMDscandata …` ASCII hex fields; preconfigured 50 Hz, 0–180°, 0.5° step → 361 `DIST1` points in mm. |
+| LiDAR | weeder | 23000 | yes | send `<zID digits>\n` (8 chars), expect `OK\n`. Then `0x02 sRN LMDscandata 0x03`. Reply is `sRA LMDscandata …` per the datasheet, but **the simulator replies `sRN LMDscandata …`** (found by Aidan 2 Nov 2026); accept both. ASCII hex fields; preconfigured 50 Hz, 0–180°, 0.5° step → 361 `DIST1` points in mm. |
 | GNSS | weeder | 24000 | no | continuous Novatel binary. Sync `AA 44 12`, header len at byte 3 (=28), msg ID at 4 (726 = BESTUTM), body len at 8 (=80). Northing double at H+16, Easting H+24, Height H+32, CRC32 at H+80 over header+body. `GPSData.dat` in the simulator folder is this exact stream. |
 | Vehicle control | weeder | 25000 | yes | send `# <steer> <speed> <wdog> #`, steer ±40°, speed ±1 m/s, wdog alternates 0/1; freeze it to inhibit motion. |
 | Display | 127.0.0.1 | 28000 | no | MATLAB server. Send X array as bytes, sleep 10 ms, then Y array (Appendix B). |
@@ -230,6 +230,9 @@ Verified results (30 Oct 2026, mock server, not the simulator):
   Python stand-in servers in `tools/` instead (`mock_lidar.py` reproduces the LiDAR service: auth,
   `sRN LMDscandata`, 361-point `DIST1` telegram). Run the harness from the repo root:
   `python tools/test_progress_check.py` (needs the exe built first).
+- **Never run the harness while the simulator is open.** Both use port 23000; the mock can't bind and
+  the exe ends up talking to the simulator. The harness now refuses to start if 23000 is taken.
+  `--sra` makes the mock reply in datasheet form; default is the simulator's `sRN` form.
 - **Test-harness trap:** if you run the exe from Python with `stdout=PIPE` and don't read the pipe
   continuously, the 7 KB scan print fills the pipe, `Console::Write` blocks, the LiDAR heartbeat
   stops, and TMM "correctly" declares it dead. Always drain stdout on a thread (the harness does).
@@ -252,6 +255,12 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 5. Aidan to run `progress-check` once against the real simulator himself (never done by Claude).
 
 ## 10. Push log (newest first)
+
+- **2026-11-02** — `progress-check`: Aidan's first real-simulator run. Threads start, LiDAR connects and
+  authenticates, `q` shutdown works. Every scan was rejected because the simulator answers `sRN`
+  instead of `sRA`; `LiDAR.cpp` now accepts both. Mock defaults to `sRN`; harness refuses to run if
+  port 23000 is busy. Builds 0 errors. Harness NOT re-run after this change (simulator was open);
+  awaiting Aidan's re-test on the simulator.
 
 - **2026-11-02** — `main` (merged into `progress-check`): crash avoidance made non-critical per Aidan
   (moved to `NONCRITICALMASK`), `SM_CrashAvoidance::inhibit` now starts `true` (fail-safe). Note: the

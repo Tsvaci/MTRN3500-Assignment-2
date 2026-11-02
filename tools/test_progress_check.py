@@ -11,8 +11,15 @@ from ctypes import wintypes
 EXE = r"Executables\MTRN3500 Assignment 2.exe"
 MOCK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_lidar.py")
 
+# If anything (e.g. the real Weeder simulator) already listens on the LiDAR port, the mock cannot bind
+# and the exe would silently talk to that instead. Refuse to run rather than report bogus results.
+import socket
+with socket.socket() as _probe:
+    if _probe.connect_ex(("127.0.0.1", 23000)) == 0:
+        sys.exit("Port 23000 is already in use (is the simulator running?). Close it and re-run.")
+
 def start_mock():
-    s = subprocess.Popen([sys.executable, MOCK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    s = subprocess.Popen([sys.executable, MOCK] + [a for a in sys.argv[1:] if a == "--sra"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
     return s
 

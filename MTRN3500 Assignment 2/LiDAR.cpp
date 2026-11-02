@@ -121,12 +121,13 @@ error_state LiDAR::readTelegram(String^% telegram) {
 // StartingAngle (1/10000 deg, signed), AngularStepWidth (1/10000 deg), NumberData, then the
 // distances in mm. Converted here to metres in the vehicle base frame: x forward, y to the left.
 // Service details Figure 1: 0 deg is the right-hand side, 90 deg straight ahead, 180 deg the left.
+// The real LMS151 answers "sRA"; the Weeder simulator answers "sRN" (echoing the request), so accept both.
 // A distance of 0 means no echo; it is stored as (0, 0) and must be ignored by consumers.
 // ---------------------------------------------------------------------------------------------
 error_state LiDAR::parseScan(String^ telegram) {
 	array<String^>^ fields = telegram->Split(' ');
 
-	if (fields->Length < 3 || fields[0] != "sRA" || fields[1] != "LMDscandata") {
+	if (fields->Length < 3 || (fields[0] != "sRA" && fields[0] != "sRN") || fields[1] != "LMDscandata") {
 		Console::WriteLine("LiDAR: unexpected reply: " + (telegram->Length > 40 ? telegram->Substring(0, 40) : telegram));
 		return error_state::ERR_INVALID_DATA;
 	}

@@ -14,6 +14,9 @@ import socket, math, sys, threading, time
 
 PORT = 23000
 N = 361
+# The Weeder simulator (checked by Aidan, 2 Nov 2026) replies "sRN LMDscandata ...", not the
+# datasheet's "sRA". Mirror the simulator; pass --sra to test the datasheet form.
+REPLY_TOKEN = "sRA" if "--sra" in sys.argv else "sRN"
 
 def scene_mm(i):
     ang = math.radians(i * 0.5)             # 0..180
@@ -29,7 +32,7 @@ def scene_mm(i):
     return int(min(2000.0 / s, 8000))
 
 def telegram():
-    hdr = ["sRA", "LMDscandata", "1", "1", "ABCD1234", "0", "0", "1C", "1C",
+    hdr = [REPLY_TOKEN, "LMDscandata", "1", "1", "ABCD1234", "0", "0", "1C", "1C",
            "3A9C", "3A9C", "0", "0", "0", "1388", "168", "0", "1", "DIST1",
            "3F800000", "00000000", "0", "1388", f"{N:X}"]
     data = [f"{scene_mm(i):X}" for i in range(N)]
