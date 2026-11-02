@@ -1,7 +1,7 @@
 #include "Controller.h"
 
-// PROGRESS-CHECK BRANCH: this module runs as a heartbeat-only stub so that TMM has a real thread
-// to start, monitor and shut down. Controller reading (Part 4) will be implemented on the full-build branch.
+// Placeholder for the progress check. For now this thread only tells TMM it is running,
+// so TMM has a real thread to start, watch and stop. Reading the controller comes in the full build.
 
 static const int STUB_LOOP_PERIOD_MS = 100;	// How often the stub reports "alive"
 

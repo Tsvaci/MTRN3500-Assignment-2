@@ -6,8 +6,7 @@ speed and steering commands in SM_VehicleControl, and raises a shutdown request 
 press. Critical thread.
 */
 
-// ControllerInterface.h pulls in <Windows.h>. It must come BEFORE UGVModule.h, because SMObjects.h
-// does "using namespace System;" and Windows.h then clashes with System::IServiceProvider (error C3699).
+// This include must come before UGVModule.h. In the other order the build fails (error C3699).
 #include <ControllerInterface.h>
 #include <UGVModule.h>
 
@@ -23,9 +22,9 @@ public:
 private:
     SM_VehicleControl^ SM_VC_;
 
-    // ControllerInterface is a native (non-CLR) class, so it is held by pointer.
-    // controllerState is a native struct too, so a ref class cannot hold one as a member (C4368);
-    // readController() reads it into a local each poll instead.
+    // The controller library is plain C++, so it has to be kept as a pointer here.
+    // For the same reason the controller's state can't be stored in this class;
+    // it is read fresh each time instead.
     ControllerInterface* controller_;
 
     // Latest commands derived from the controller state

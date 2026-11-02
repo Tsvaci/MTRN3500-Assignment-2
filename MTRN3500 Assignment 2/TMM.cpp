@@ -1,5 +1,5 @@
 #include "TMM.h"
-#include <conio.h>		// _kbhit / _getch for the 'q' key
+#include <conio.h>		// Lets us check the keyboard for 'q'
 
 ThreadManagement::ThreadManagement() {
 	SM_TM_ = nullptr;
@@ -9,9 +9,7 @@ ThreadManagement::ThreadManagement() {
 	SM_CA_ = nullptr;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Part 1, item 1: create every shared memory object. TMM owns them and hands them to the modules.
-// ---------------------------------------------------------------------------------------------
+// Make all the shared memory. TMM owns it and gives each module the parts it needs.
 error_state ThreadManagement::setupSharedMemory() {
 	try {
 		SM_TM_ = gcnew SM_ThreadManagement();
@@ -20,7 +18,7 @@ error_state ThreadManagement::setupSharedMemory() {
 		for (int i = 0; i < THREAD_COUNT; i++) {
 			SM_TM_->WatchList[i] = gcnew Stopwatch();
 		}
-		SM_TM_->WatchList[bitIndex(bit_TM)]->Start();	// TMM is alive from this moment
+		SM_TM_->WatchList[bitIndex(bit_TM)]->Start();	// TMM counts as running from now
 
 		SM_Laser_ = gcnew SM_Laser();
 		SM_GPS_ = gcnew SM_GPS();
@@ -34,7 +32,7 @@ error_state ThreadManagement::setupSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// TMM's own use of shared memory: publish its heartbeat so the other modules know it is alive.
+// Tell the other modules that TMM is still running.
 error_state ThreadManagement::processSharedMemory() {
 	if (SM_TM_ == nullptr) {
 		return error_state::ERR_SM;
@@ -50,10 +48,7 @@ error_state ThreadManagement::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Part 1, item 2: start the module threads in the order that suits tele-operation
-// (see MODULE_START_ORDER in TMM.h for the reasoning).
-// ---------------------------------------------------------------------------------------------
+// Start all six module threads, in the order listed in TMM.h.
 error_state ThreadManagement::startThreads() {
 	for each (uint8_t moduleBit in MODULE_START_ORDER) {
 		error_state result = startModule(moduleBit);
@@ -63,15 +58,15 @@ error_state ThreadManagement::startThreads() {
 		}
 	}
 
-	// Wait here until every thread has finished its own start-up (connecting etc.), so that all
-	// threads begin their main loops together. A timeout stops one broken thread from hanging start-up.
+	// Wait until every thread has finished getting ready, so they all start together.
+	// Give up waiting after a while, so one stuck thread can't hold everything up.
 	Console::WriteLine("TMM: waiting for all threads to finish starting...");
 	bool allStarted = SM_TM_->ThreadBarrier->SignalAndWait(BARRIER_TIMEOUT_MS);
 	if (!allStarted) {
 		Console::WriteLine("TMM: WARNING - not all threads reached the start barrier in time.");
 	}
 
-	// The barrier has done its job. Clear it so a restarted thread does not try to wait on it.
+	// Start-up is over. Remove the barrier so a thread that gets restarted later doesn't wait on it.
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
 		SM_TM_->ThreadBarrier = nullptr;
@@ -84,7 +79,7 @@ error_state ThreadManagement::startThreads() {
 	return error_state::SUCCESS;
 }
 
-// Create (or re-create, when restarting) one module and its thread, chosen by its heartbeat bit.
+// Create one module and start its thread. Also used to restart a module.
 error_state ThreadManagement::startModule(uint8_t moduleBit) {
 	try {
 		Thread^ thread = nullptr;
@@ -124,7 +119,7 @@ error_state ThreadManagement::startModule(uint8_t moduleBit) {
 			return error_state::ERR_STARTUP;
 		}
 
-		// Give the new thread a clean slate: no stale shutdown bit, and its stopwatch starts now.
+		// Clear anything left over from before, and start this module's timer fresh.
 		Monitor::Enter(SM_TM_->lockObject);
 		try {
 			SM_TM_->shutdown &= ~moduleBit;
@@ -144,14 +139,13 @@ error_state ThreadManagement::startModule(uint8_t moduleBit) {
 	return error_state::SUCCESS;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Part 1, items 3-5: check heartbeats. Each module sets its bit; TMM clears it and resets that
-// module's stopwatch. A stopwatch that runs past the timeout means the module has stopped beating.
-// Critical module dead -> return its bit so the caller shuts everything down.
-// Non-critical module dead -> restart it here.
-// ---------------------------------------------------------------------------------------------
+// Check that every module is still running.
+// Each module keeps ticking its bit. Each time TMM sees the tick, it resets that module's timer.
+// If a timer runs too long, that module has stopped.
+// An important (critical) module stopping means shut everything down.
+// A less important one just gets restarted.
 uint8_t ThreadManagement::checkHeartbeats() {
-	// Step 1: collect the heartbeats that arrived since the last check.
+	// First, note which modules have ticked since last time.
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
 		for each (uint8_t moduleBit in MODULE_START_ORDER) {
@@ -165,7 +159,7 @@ uint8_t ThreadManagement::checkHeartbeats() {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
 
-	// Step 2: act on any module that has been silent for too long.
+	// Then deal with any module that has gone quiet for too long.
 	for each (uint8_t moduleBit in MODULE_START_ORDER) {
 		if (SM_TM_->WatchList[bitIndex(moduleBit)]->ElapsedMilliseconds > HEARTBEAT_TIMEOUT_MS) {
 			if (moduleBit & CRITICALMASK) {
@@ -180,7 +174,7 @@ uint8_t ThreadManagement::checkHeartbeats() {
 	return 0;
 }
 
-// Part 1, item 6: 'q' in this console window requests a routine shutdown.
+// True if 'q' was pressed in this window.
 bool ThreadManagement::shutdownKeyPressed() {
 	if (_kbhit()) {
 		int key = _getch();
@@ -189,9 +183,7 @@ bool ThreadManagement::shutdownKeyPressed() {
 	return false;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Part 1, items 4 and 6: tell every module to stop, then wait for each thread to finish.
-// ---------------------------------------------------------------------------------------------
+// Tell every module to stop, then wait for each one to finish.
 void ThreadManagement::shutdownModules() {
 	Console::WriteLine("TMM: shutting down all modules...");
 
@@ -203,12 +195,12 @@ void ThreadManagement::shutdownModules() {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
 
-	// Same order as MODULE_START_ORDER, so each thread lines up with its module name.
+	// Same order as MODULE_START_ORDER, so each thread matches its name.
 	array<Thread^>^ threads = { controllerThread_, lidarThread_, crashAvoidanceThread_, vehicleControlThread_, displayThread_, gnssThread_ };
 
 	for (int i = 0; i < threads->Length; i++) {
 		if (threads[i] == nullptr) {
-			continue;									// Never started
+			continue;									// This one was never started
 		}
 		String^ name = moduleName(MODULE_START_ORDER[i]);
 		if (threads[i]->Join(THREAD_STOP_WAIT_MS)) {
@@ -221,7 +213,7 @@ void ThreadManagement::shutdownModules() {
 	Console::WriteLine("TMM: shutdown complete.");
 }
 
-// TMM shuts down when some module (e.g. the controller's shutdown button) has set its bit.
+// True if another module (such as the controller's stop button) has asked TMM to stop.
 bool ThreadManagement::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -247,9 +239,7 @@ String^ ThreadManagement::moduleName(uint8_t moduleBit) {
 	}
 }
 
-// ---------------------------------------------------------------------------------------------
-// The TMM thread itself: start everything, then loop monitoring until a shutdown reason appears.
-// ---------------------------------------------------------------------------------------------
+// TMM's main job: start everything, keep checking on it, and shut it all down at the end.
 void ThreadManagement::threadFunction() {
 	Console::WriteLine("TMM: thread started.");
 
@@ -261,7 +251,7 @@ void ThreadManagement::threadFunction() {
 
 	try {
 		while (true) {
-			processSharedMemory();				// Item 7: tell the modules TMM is alive
+			processSharedMemory();				// Tell the modules TMM is still running
 
 			uint8_t deadCriticalModule = checkHeartbeats();
 			if (deadCriticalModule != 0) {

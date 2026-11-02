@@ -257,6 +257,10 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 
 ## 10. Push log (newest first)
 
+- **2026-11-02** — `progress-check`: comments only. Removed the `// ----` separator lines and rewrote
+  comments in very plain language (Aidan's request: no spec section numbers or jargon). Script check
+  confirmed no code lines changed. Builds 0 errors; harness 32.1 scans/s, LiDAR loss and `q` both clean.
+
 - **2026-11-02** — `progress-check`: readability pass at Aidan's request, no behaviour change. Spec-fixed
   names untouched. Added two protected helpers to `UGVModule.h` (`waitForStartBarrier()`,
   `tmmHasStopped()`) replacing code copied into all six modules; TMM now has `MODULE_START_ORDER`,
