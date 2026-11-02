@@ -23,9 +23,10 @@ public:
 private:
     SM_VehicleControl^ SM_VC_;
 
-    // ControllerInterface is a native (non-CLR) class, so it is held by pointer
+    // ControllerInterface is a native (non-CLR) class, so it is held by pointer.
+    // controllerState is a native struct too, so a ref class cannot hold one as a member (C4368);
+    // readController() reads it into a local each poll instead.
     ControllerInterface* controller_;
-    controllerState state_;
 
     // Latest commands derived from the controller state
     double speed_;
