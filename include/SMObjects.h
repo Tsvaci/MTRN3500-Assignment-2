@@ -34,8 +34,10 @@ constexpr uint8_t bit_CRASHAVOIDANCE =  0b01000000;
 // Ordering of processes in the mask should be based on the order in the UnitFlags type above.
 // Critical threads: a failure causes a complete shutdown.
 // Non-critical threads: a failure causes TMM to attempt a restart of that thread only.
-constexpr uint8_t CRITICALMASK =    bit_TM | bit_LASER | bit_VC | bit_CONTROLLER | bit_DISPLAY | bit_CRASHAVOIDANCE;
-constexpr uint8_t NONCRITICALMASK = bit_GPS;
+// Crash avoidance is non-critical (Aidan, 2 Nov 2026): it is restarted rather than shutting everything
+// down. That is only safe because SM_CrashAvoidance starts with inhibit = true (see below).
+constexpr uint8_t CRITICALMASK =    bit_TM | bit_LASER | bit_VC | bit_CONTROLLER | bit_DISPLAY;
+constexpr uint8_t NONCRITICALMASK = bit_GPS | bit_CRASHAVOIDANCE;
 
 ref class SM_ThreadManagement
 {
@@ -98,12 +100,13 @@ ref class SM_CrashAvoidance
 {
 public:
     Object^ lockObject;
-    bool inhibit;               // true when forward motion must be blocked
+    bool inhibit;               // true when forward motion must be blocked. Fail-safe: starts true, so
+                                // nothing moves until crash avoidance has checked a scan and cleared it.
     double nearestObstacle;     // distance (m) to the nearest obstacle in the checked region
 
     SM_CrashAvoidance() {
         lockObject = gcnew Object();
-        inhibit = false;
+        inhibit = true;
         nearestObstacle = 0.0;
     }
 };

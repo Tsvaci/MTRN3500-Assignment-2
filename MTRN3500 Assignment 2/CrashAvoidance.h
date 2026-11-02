@@ -3,7 +3,7 @@
 CrashAvoidance.h - Crash Avoidance Module (Part 7)
 Combines the LiDAR scan with the commanded speed and steering to decide whether forward
 motion must be inhibited, and publishes that decision in SM_CrashAvoidance for the vehicle
-control module. Critical thread.
+control module. Non-critical thread: TMM restarts it if it stops.
 */
 
 #include <UGVModule.h>

@@ -111,7 +111,7 @@ Plus `docs/crash_avoidance_report.md` (the one-page theory report).
 - `main` creates the TMM only; TMM creates shared memory and all other threads.
 
 **Critical vs non-critical (from the draft).** Critical: TMM, LiDAR, Controller, VC, Display.
-Non-critical: GNSS. Crash avoidance: draft doesn't say; **Aidan to decide** (default: critical).
+Non-critical: GNSS and crash avoidance (draft doesn't say; **Aidan decided 2 Nov 2026: restartable**).
 Critical failure → full shutdown. Non-critical failure → restart that thread.
 
 **Network services (service details doc).**
@@ -175,7 +175,9 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
 - Start order: Controller, LiDAR, CrashAvoidance, VC, Display, GNSS. Inputs before actuator, safety
   gate before the first drive command. A `Barrier` releases all threads together once connected.
 - Crash avoidance publishes an inhibit flag in a new `SM_CrashAvoidance`; VC honours it by freezing
-  the watchdog.
+  the watchdog. Because crash avoidance is restartable, the flag is **fail-safe**: it starts `true`, so
+  nothing moves until crash avoidance has cleared a scan. In `full-build`, VC must also treat a stale
+  crash-avoidance update (thread down or restarting) as inhibit.
 
 ## 8. Current status
 
@@ -241,8 +243,8 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 3. `full-build` branch, branched from `progress-check` (so TMM and LiDAR carry over): Parts 3–7
    (GNSS decode + CRC, Controller, VC command stream, Display to MATLAB, CrashAvoidance), the
    one-page report in `docs/`, then the GR-U01 bonus. Add mock servers for GNSS (replay
-   `GPSData.dat`), VC and display to `tools/` as needed. Aidan has not yet confirmed whether crash
-   avoidance is critical (current code: critical).
+   `GPSData.dat`), VC and display to `tools/` as needed. Crash avoidance is non-critical
+   (restartable), decided by Aidan 2 Nov 2026.
 4. Open questions for Aidan: Figure 1's "270°" label sits on the +X axis, which contradicts the
    other five labels (they imply 0° = right, 90° = forward, 180° = left). The code follows the
    five; confirm or correct the figure. Also: which student ID to put in `STUDENT_ID`
@@ -250,6 +252,11 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 5. Aidan to run `progress-check` once against the real simulator himself (never done by Claude).
 
 ## 10. Push log (newest first)
+
+- **2026-11-02** — `main` (merged into `progress-check`): crash avoidance made non-critical per Aidan
+  (moved to `NONCRITICALMASK`), `SM_CrashAvoidance::inhibit` now starts `true` (fail-safe). Note: the
+  two `tools/` files that kept showing as deleted were removed by the PC's security software, not Aidan;
+  restore with `git checkout -- tools/` if it happens again.
 
 - **2026-11-02** — `main` (merged into `progress-check`): swapped in Aidan's updated
   `ControllerInterface_x64_Debug.lib` and `ControllerInterface.h` for VS > 17.9, old files renamed
