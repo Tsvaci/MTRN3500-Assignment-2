@@ -51,15 +51,12 @@ error_state ThreadManagement::processSharedMemory() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Part 1, item 2: start the module threads in the order that suits tele-operation.
-// Inputs (controller, LiDAR) first, then the safety gate (crash avoidance), then the actuator
-// (vehicle control), then the display, and finally the non-critical GNSS.
+// Part 1, item 2: start the module threads in the order that suits tele-operation
+// (see MODULE_START_ORDER in TMM.h for the reasoning).
 // ---------------------------------------------------------------------------------------------
 error_state ThreadManagement::startThreads() {
-	array<uint8_t>^ order = { bit_CONTROLLER, bit_LASER, bit_CRASHAVOIDANCE, bit_VC, bit_DISPLAY, bit_GPS };
-
-	for (int i = 0; i < order->Length; i++) {
-		error_state result = startModule(order[i]);
+	for each (uint8_t moduleBit in MODULE_START_ORDER) {
+		error_state result = startModule(moduleBit);
 		if (result != error_state::SUCCESS) {
 			printError(result);
 			return result;
@@ -141,7 +138,7 @@ error_state ThreadManagement::startModule(uint8_t moduleBit) {
 		thread->Start();
 	}
 	catch (Exception^ e) {
-		Console::WriteLine("TMM: failed to start module " + moduleBit + ": " + e->Message);
+		Console::WriteLine("TMM: failed to start " + moduleName(moduleBit) + ": " + e->Message);
 		return error_state::ERR_STARTUP;
 	}
 	return error_state::SUCCESS;
@@ -153,15 +150,14 @@ error_state ThreadManagement::startModule(uint8_t moduleBit) {
 // Critical module dead -> return its bit so the caller shuts everything down.
 // Non-critical module dead -> restart it here.
 // ---------------------------------------------------------------------------------------------
-uint8_t ThreadManagement::monitorHeartbeats() {
-	array<uint8_t>^ modules = { bit_CONTROLLER, bit_LASER, bit_CRASHAVOIDANCE, bit_VC, bit_DISPLAY, bit_GPS };
-
+uint8_t ThreadManagement::checkHeartbeats() {
+	// Step 1: collect the heartbeats that arrived since the last check.
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
-		for (int i = 0; i < modules->Length; i++) {
-			if (SM_TM_->heartbeat & modules[i]) {
-				SM_TM_->heartbeat &= ~modules[i];
-				SM_TM_->WatchList[bitIndex(modules[i])]->Restart();
+		for each (uint8_t moduleBit in MODULE_START_ORDER) {
+			if (SM_TM_->heartbeat & moduleBit) {
+				SM_TM_->heartbeat &= ~moduleBit;
+				SM_TM_->WatchList[bitIndex(moduleBit)]->Restart();
 			}
 		}
 	}
@@ -169,14 +165,14 @@ uint8_t ThreadManagement::monitorHeartbeats() {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
 
-	for (int i = 0; i < modules->Length; i++) {
-		uint8_t bit = modules[i];
-		if (SM_TM_->WatchList[bitIndex(bit)]->ElapsedMilliseconds > HEARTBEAT_TIMEOUT_MS) {
-			if (bit & CRITICALMASK) {
-				return bit;
+	// Step 2: act on any module that has been silent for too long.
+	for each (uint8_t moduleBit in MODULE_START_ORDER) {
+		if (SM_TM_->WatchList[bitIndex(moduleBit)]->ElapsedMilliseconds > HEARTBEAT_TIMEOUT_MS) {
+			if (moduleBit & CRITICALMASK) {
+				return moduleBit;
 			}
-			Console::WriteLine("TMM: non-critical module (bit " + bit + ") stopped responding - restarting it.");
-			if (startModule(bit) != error_state::SUCCESS) {
+			Console::WriteLine("TMM: " + moduleName(moduleBit) + " (non-critical) stopped responding - restarting it.");
+			if (startModule(moduleBit) != error_state::SUCCESS) {
 				Console::WriteLine("TMM: restart failed; will try again after the next timeout.");
 			}
 		}
@@ -207,18 +203,19 @@ void ThreadManagement::shutdownModules() {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
 
+	// Same order as MODULE_START_ORDER, so each thread lines up with its module name.
 	array<Thread^>^ threads = { controllerThread_, lidarThread_, crashAvoidanceThread_, vehicleControlThread_, displayThread_, gnssThread_ };
-	array<String^>^ names = { "Controller", "LiDAR", "CrashAvoidance", "VehicleControl", "Display", "GNSS" };
 
 	for (int i = 0; i < threads->Length; i++) {
 		if (threads[i] == nullptr) {
-			continue;
+			continue;									// Never started
 		}
-		if (threads[i]->Join(JOIN_TIMEOUT_MS)) {
-			Console::WriteLine("TMM: " + names[i] + " thread stopped.");
+		String^ name = moduleName(MODULE_START_ORDER[i]);
+		if (threads[i]->Join(THREAD_STOP_WAIT_MS)) {
+			Console::WriteLine("TMM: " + name + " thread stopped.");
 		}
 		else {
-			Console::WriteLine("TMM: WARNING - " + names[i] + " thread did not stop within " + JOIN_TIMEOUT_MS + " ms.");
+			Console::WriteLine("TMM: WARNING - " + name + " thread did not stop within " + THREAD_STOP_WAIT_MS + " ms.");
 		}
 	}
 	Console::WriteLine("TMM: shutdown complete.");
@@ -226,15 +223,28 @@ void ThreadManagement::shutdownModules() {
 
 // TMM shuts down when some module (e.g. the controller's shutdown button) has set its bit.
 bool ThreadManagement::getShutdownFlag() {
-	bool flag = false;
+	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
-		flag = (SM_TM_->shutdown & bit_TM) != 0;
+		shutdownRequested = (SM_TM_->shutdown & bit_TM) != 0;
 	}
 	finally {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
-	return flag;
+	return shutdownRequested;
+}
+
+String^ ThreadManagement::moduleName(uint8_t moduleBit) {
+	switch (moduleBit) {
+	case bit_TM:             return "TMM";
+	case bit_LASER:          return "LiDAR";
+	case bit_GPS:            return "GNSS";
+	case bit_VC:             return "VehicleControl";
+	case bit_CONTROLLER:     return "Controller";
+	case bit_DISPLAY:        return "Display";
+	case bit_CRASHAVOIDANCE: return "CrashAvoidance";
+	default:                 return "module " + moduleBit;
+	}
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -253,9 +263,9 @@ void ThreadManagement::threadFunction() {
 		while (true) {
 			processSharedMemory();				// Item 7: tell the modules TMM is alive
 
-			uint8_t failed = monitorHeartbeats();
-			if (failed != 0) {
-				Console::WriteLine("TMM: CRITICAL module (bit " + failed + ") stopped responding.");
+			uint8_t deadCriticalModule = checkHeartbeats();
+			if (deadCriticalModule != 0) {
+				Console::WriteLine("TMM: CRITICAL module " + moduleName(deadCriticalModule) + " stopped responding.");
 				break;
 			}
 			if (shutdownKeyPressed()) {

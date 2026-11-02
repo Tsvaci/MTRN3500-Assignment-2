@@ -91,4 +91,31 @@ ref class UGVModule abstract
 
 	protected:
 		SM_ThreadManagement^ SM_TM_;
+
+		// Helpers shared by every module (added for this solution).
+
+		// Wait at TMM's start-up barrier so that all threads begin their main loops together.
+		// After start-up TMM removes the barrier, so a restarted thread skips straight past.
+		void waitForStartBarrier()
+		{
+			Barrier^ barrier = nullptr;
+			Monitor::Enter(SM_TM_->lockObject);
+			try { barrier = SM_TM_->ThreadBarrier; }
+			finally { Monitor::Exit(SM_TM_->lockObject); }
+
+			if (barrier != nullptr) {
+				barrier->SignalAndWait(BARRIER_TIMEOUT_MS);
+			}
+		}
+
+		// True when TMM has stopped refreshing its own stopwatch, i.e. TMM is no longer running.
+		// Every module then shuts itself down rather than carrying on unsupervised.
+		bool tmmHasStopped()
+		{
+			bool stopped = false;
+			Monitor::Enter(SM_TM_->lockObject);
+			try { stopped = SM_TM_->WatchList[bitIndex(bit_TM)]->ElapsedMilliseconds > TM_ALIVE_TIMEOUT_MS; }
+			finally { Monitor::Exit(SM_TM_->lockObject); }
+			return stopped;
+		}
 };

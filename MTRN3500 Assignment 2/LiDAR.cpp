@@ -17,9 +17,9 @@ LiDAR::LiDAR(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 error_state LiDAR::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
-		Client->NoDelay = true;
-		Client->ReceiveTimeout = 2000;
-		Client->SendTimeout = 1000;
+		Client->NoDelay = true;						// Send each small request immediately
+		Client->ReceiveTimeout = RECEIVE_TIMEOUT_MS;
+		Client->SendTimeout = SEND_TIMEOUT_MS;
 		Stream = Client->GetStream();
 		ReadData = gcnew array<unsigned char>(READ_BUFFER_SIZE);
 	}
@@ -41,11 +41,11 @@ error_state LiDAR::authenticate() {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes(STUDENT_ID "\n");
 		Stream->Write(request, 0, request->Length);
 
-		int received = Stream->Read(ReadData, 0, ReadData->Length);
-		if (received <= 0) {
+		int bytesReceived = Stream->Read(ReadData, 0, ReadData->Length);
+		if (bytesReceived <= 0) {
 			return error_state::ERR_NO_DATA;
 		}
-		String^ reply = Encoding::ASCII->GetString(ReadData, 0, received);
+		String^ reply = Encoding::ASCII->GetString(ReadData, 0, bytesReceived);
 		if (!reply->StartsWith("OK")) {
 			Console::WriteLine("LiDAR: authentication rejected, server said: " + reply->Trim());
 			return error_state::ERR_AUTHENTICATION;
@@ -65,12 +65,12 @@ error_state LiDAR::authenticate() {
 // Service details, Section 3: <STX>sRN LMDscandata<ETX> asks for the most recent scan.
 error_state LiDAR::requestScan() {
 	try {
-		array<unsigned char>^ body = Encoding::ASCII->GetBytes("sRN LMDscandata");
-		array<unsigned char>^ command = gcnew array<unsigned char>(body->Length + 2);
-		command[0] = 0x02;										// STX
-		Array::Copy(body, 0, command, 1, body->Length);
-		command[command->Length - 1] = 0x03;					// ETX
-		Stream->Write(command, 0, command->Length);
+		array<unsigned char>^ request = Encoding::ASCII->GetBytes("sRN LMDscandata");
+		array<unsigned char>^ framedRequest = gcnew array<unsigned char>(request->Length + 2);
+		framedRequest[0] = STX;
+		Array::Copy(request, 0, framedRequest, 1, request->Length);
+		framedRequest[framedRequest->Length - 1] = ETX;
+		Stream->Write(framedRequest, 0, framedRequest->Length);
 	}
 	catch (Exception^ e) {
 		Console::WriteLine("LiDAR: failed to send scan request - " + e->Message);
@@ -79,22 +79,23 @@ error_state LiDAR::requestScan() {
 	return error_state::SUCCESS;
 }
 
-// Read bytes until the ETX terminator arrives, then hand back the ASCII between STX and ETX.
+// A reply can arrive in several TCP pieces, so keep reading until the ETX end marker arrives,
+// then hand back the ASCII text between STX and ETX.
 error_state LiDAR::readTelegram(String^% telegram) {
-	int total = 0;
+	int totalBytes = 0;
 	try {
 		while (true) {
-			if (total >= ReadData->Length) {
+			if (totalBytes >= ReadData->Length) {
 				Console::WriteLine("LiDAR: telegram larger than the read buffer - discarded.");
 				return error_state::ERR_INVALID_DATA;
 			}
-			int received = Stream->Read(ReadData, total, ReadData->Length - total);
-			if (received <= 0) {
+			int bytesReceived = Stream->Read(ReadData, totalBytes, ReadData->Length - totalBytes);
+			if (bytesReceived <= 0) {
 				return error_state::ERR_CONNECTION;			// Server closed the connection
 			}
-			total += received;
-			if (Array::IndexOf(ReadData, (unsigned char)0x03, total - received, received) >= 0) {
-				break;
+			totalBytes += bytesReceived;
+			if (Array::IndexOf(ReadData, ETX, totalBytes - bytesReceived, bytesReceived) >= 0) {
+				break;										// End marker is in the piece just received
 			}
 		}
 	}
@@ -106,20 +107,20 @@ error_state LiDAR::readTelegram(String^% telegram) {
 		return error_state::ERR_CONNECTION;
 	}
 
-	int start = Array::IndexOf(ReadData, (unsigned char)0x02, 0, total);
-	int end = Array::IndexOf(ReadData, (unsigned char)0x03, 0, total);
-	if (start < 0 || end < 0 || end <= start) {
+	int stxIndex = Array::IndexOf(ReadData, STX, 0, totalBytes);
+	int etxIndex = Array::IndexOf(ReadData, ETX, 0, totalBytes);
+	if (stxIndex < 0 || etxIndex < 0 || etxIndex <= stxIndex) {
 		return error_state::ERR_INVALID_DATA;
 	}
-	telegram = Encoding::ASCII->GetString(ReadData, start + 1, end - start - 1);
+	telegram = Encoding::ASCII->GetString(ReadData, stxIndex + 1, etxIndex - stxIndex - 1);
 	return error_state::SUCCESS;
 }
 
 // ---------------------------------------------------------------------------------------------
-// Decode "sRA LMDscandata ..." (SICK LMS1xx manual, section 10.2.4). Fields are space-separated
-// hexadecimal. After the token DIST1 come: ScalingFactor (IEEE float as hex), ScalingOffset,
-// StartingAngle (1/10000 deg, signed), AngularStepWidth (1/10000 deg), NumberData, then the
-// distances in mm. Converted here to metres in the vehicle base frame: x forward, y to the left.
+// Decode the "sRA LMDscandata ..." reply (SICK LMS1xx manual, section 10.2.4). Fields are
+// space-separated hexadecimal. After the token DIST1 come: scale factor (a float written as hex),
+// scale offset, start angle (1/10000 deg, signed), angle step (1/10000 deg), number of points, then
+// one distance per point in mm. Converted here to metres in the vehicle frame: x forward, y left.
 // Service details Figure 1: 0 deg is the right-hand side, 90 deg straight ahead, 180 deg the left.
 // The real LMS151 answers "sRA"; the Weeder simulator answers "sRN" (echoing the request), so accept both.
 // A distance of 0 means no echo; it is stored as (0, 0) and must be ignored by consumers.
@@ -132,32 +133,38 @@ error_state LiDAR::parseScan(String^ telegram) {
 		return error_state::ERR_INVALID_DATA;
 	}
 
-	int dist = Array::IndexOf(fields, "DIST1");
-	if (dist < 0 || dist + 6 > fields->Length) {
+	// Everything we need is positioned relative to the DIST1 token.
+	int dist1Index = Array::IndexOf(fields, "DIST1");
+	int firstDistanceIndex = dist1Index + 6;
+	if (dist1Index < 0 || firstDistanceIndex > fields->Length) {
 		return error_state::ERR_INVALID_DATA;
 	}
 
 	try {
-		unsigned int scaleBits = Convert::ToUInt32(fields[dist + 1], 16);
-		float scale = BitConverter::ToSingle(BitConverter::GetBytes(scaleBits), 0);
-		int startAngle = Convert::ToInt32(fields[dist + 3], 16);			// 1/10000 degree, two's complement
-		unsigned int step = Convert::ToUInt16(fields[dist + 4], 16);		// 1/10000 degree
-		int count = Convert::ToUInt16(fields[dist + 5], 16);
+		// The scale factor is a 32-bit float sent as its raw bit pattern in hex.
+		unsigned int scaleFactorBits = Convert::ToUInt32(fields[dist1Index + 1], 16);
+		float scaleFactor = BitConverter::ToSingle(BitConverter::GetBytes(scaleFactorBits), 0);
+		// (dist1Index + 2 is the scale offset, which is always 0 for this sensor.)
+		int startAngle = Convert::ToInt32(fields[dist1Index + 3], 16);			// 1/10000 degree, signed
+		unsigned int angleStep = Convert::ToUInt16(fields[dist1Index + 4], 16);	// 1/10000 degree
+		int pointCount = Convert::ToUInt16(fields[dist1Index + 5], 16);
 
-		if (count != STANDARD_LASER_LENGTH || dist + 6 + count > fields->Length) {
-			Console::WriteLine("LiDAR: expected " + STANDARD_LASER_LENGTH + " points, telegram has " + count);
+		if (pointCount != STANDARD_LASER_LENGTH || firstDistanceIndex + pointCount > fields->Length) {
+			Console::WriteLine("LiDAR: expected " + STANDARD_LASER_LENGTH + " points, telegram has " + pointCount);
 			return error_state::ERR_INVALID_DATA;
 		}
-		if (scale <= 0.0f || step == 0) {
+		if (scaleFactor <= 0.0f || angleStep == 0) {
 			return error_state::ERR_INVALID_DATA;
 		}
 
-		for (int i = 0; i < count; i++) {
-			unsigned int raw = Convert::ToUInt16(fields[dist + 6 + i], 16);
-			double range = raw * scale / 1000.0;								// mm -> m
-			double angle = (startAngle + (double)i * step) / 10000.0 * Math::PI / 180.0;
-			x_[i] = range * Math::Sin(angle);
-			y_[i] = -range * Math::Cos(angle);
+		for (int i = 0; i < pointCount; i++) {
+			unsigned int distanceMm = Convert::ToUInt16(fields[firstDistanceIndex + i], 16);
+			double rangeM = distanceMm * scaleFactor / 1000.0;
+			double angleDeg = (startAngle + (double)i * angleStep) / 10000.0;
+			double angleRad = angleDeg * Math::PI / 180.0;
+			// 90 deg is straight ahead, so sin gives the forward part and -cos the leftward part.
+			x_[i] = rangeM * Math::Sin(angleRad);
+			y_[i] = -rangeM * Math::Cos(angleRad);
 		}
 	}
 	catch (FormatException^) {
@@ -201,17 +208,19 @@ error_state LiDAR::processSharedMemory() {
 
 // Progress check item (ii): the 361 points as x,y pairs, four per line.
 void LiDAR::printScan() {
-	Text::StringBuilder^ sb = gcnew Text::StringBuilder();
-	sb->AppendLine("LiDAR scan #" + scanCount_ + "  (" + STANDARD_LASER_LENGTH + " points, metres, x = forward, y = left)");
+	// Build the whole block first and write it once, so lines from other threads can't interleave.
+	Text::StringBuilder^ text = gcnew Text::StringBuilder();
+	text->AppendLine("LiDAR scan #" + scanCount_ + "  (" + STANDARD_LASER_LENGTH + " points, metres, x = forward, y = left)");
 	for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
-		sb->Append(String::Format("{0,3}: ({1,6:F2}, {2,6:F2})   ", i, x_[i], y_[i]));
+		text->Append(String::Format("{0,3}: ({1,6:F2}, {2,6:F2})   ", i, x_[i], y_[i]));
 		if (i % 4 == 3 || i == STANDARD_LASER_LENGTH - 1) {
-			sb->AppendLine();
+			text->AppendLine();
 		}
 	}
-	Console::Write(sb->ToString());
+	Console::Write(text->ToString());
 }
 
+// Tell TMM this thread is alive: TMM watches for this bit and clears it each time it sees it.
 void LiDAR::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -222,18 +231,17 @@ void LiDAR::heartbeat() {
 	}
 }
 
-// Shut down if TMM says so, or if TMM itself has stopped beating.
+// Stop when TMM sets this module's shutdown bit, or when TMM itself has stopped running.
 bool LiDAR::getShutdownFlag() {
-	bool flag = false;
+	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
-		flag = (SM_TM_->shutdown & bit_LASER) != 0
-			|| SM_TM_->WatchList[bitIndex(bit_TM)]->ElapsedMilliseconds > TM_ALIVE_TIMEOUT_MS;
+		shutdownRequested = (SM_TM_->shutdown & bit_LASER) != 0;
 	}
 	finally {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
-	return flag;
+	return shutdownRequested || tmmHasStopped();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -248,13 +256,7 @@ void LiDAR::threadFunction() {
 	}
 
 	// Join the start-up barrier whether or not the connection worked, so the others are not held up.
-	Barrier^ barrier = nullptr;
-	Monitor::Enter(SM_TM_->lockObject);
-	try { barrier = SM_TM_->ThreadBarrier; }
-	finally { Monitor::Exit(SM_TM_->lockObject); }
-	if (barrier != nullptr) {
-		barrier->SignalAndWait(BARRIER_TIMEOUT_MS);
-	}
+	waitForStartBarrier();
 
 	if (status != error_state::SUCCESS) {
 		Console::WriteLine("LiDAR: cannot run without a connection - thread stopping (TMM will notice the missing heartbeat).");
@@ -279,13 +281,14 @@ void LiDAR::threadFunction() {
 					break;									// Lost the server: stop, and let TMM act
 				}
 			}
-			Thread::Sleep(20);								// Sensor runs at 50 Hz; no point asking faster
+			Thread::Sleep(SCAN_PERIOD_MS);					// Sensor runs at 50 Hz; no point asking faster
 		}
 	}
 	catch (Exception^ e) {
 		Console::WriteLine("LiDAR: unexpected error - " + e->Message);
 	}
 
+	// Close the connection cleanly; errors here don't matter because the thread is ending anyway.
 	try {
 		if (Stream != nullptr) Stream->Close();
 		if (Client != nullptr) Client->Close();

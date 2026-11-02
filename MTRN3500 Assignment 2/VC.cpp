@@ -1,7 +1,9 @@
 #include "VC.h"
 
 // PROGRESS-CHECK BRANCH: this module runs as a heartbeat-only stub so that TMM has a real thread
-// to start, monitor and shut down. Vehicle control (Part 5) is implemented on the full-build branch.
+// to start, monitor and shut down. Vehicle control (Part 5) will be implemented on the full-build branch.
+
+static const int STUB_LOOP_PERIOD_MS = 100;	// How often the stub reports "alive"
 
 VehicleControl::VehicleControl(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM_VC, SM_CrashAvoidance^ SM_CA) {
 	SM_TM_ = SM_TM;
@@ -25,33 +27,28 @@ error_state VehicleControl::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
+// Stop when TMM sets this module's shutdown bit, or when TMM itself has stopped running.
 bool VehicleControl::getShutdownFlag() {
-	bool flag = false;
+	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
-		flag = (SM_TM_->shutdown & bit_VC) != 0
-			|| SM_TM_->WatchList[bitIndex(bit_TM)]->ElapsedMilliseconds > TM_ALIVE_TIMEOUT_MS;
+		shutdownRequested = (SM_TM_->shutdown & bit_VC) != 0;
 	}
 	finally {
 		Monitor::Exit(SM_TM_->lockObject);
 	}
-	return flag;
+	return shutdownRequested || tmmHasStopped();
 }
 
 void VehicleControl::threadFunction() {
-	Console::WriteLine("VehicleControl: thread started (stub - Part 5 is on the full-build branch).");
+	Console::WriteLine("VehicleControl: thread started (stub - Part 5 comes in the full build).");
 
-	Barrier^ barrier = nullptr;
-	Monitor::Enter(SM_TM_->lockObject);
-	try { barrier = SM_TM_->ThreadBarrier; }
-	finally { Monitor::Exit(SM_TM_->lockObject); }
-	if (barrier != nullptr) {
-		barrier->SignalAndWait(BARRIER_TIMEOUT_MS);
-	}
+	waitForStartBarrier();
 
+	// Stub loop: nothing to do yet except tell TMM this thread is still alive.
 	while (!getShutdownFlag()) {
 		heartbeat();
-		Thread::Sleep(100);
+		Thread::Sleep(STUB_LOOP_PERIOD_MS);
 	}
 	Console::WriteLine("VehicleControl: thread shut down.");
 }
@@ -64,6 +61,7 @@ String^ VehicleControl::buildCommand() {
 	return "# 0 0 0 #";
 }
 
+// Tell TMM this thread is alive: TMM watches for this bit and clears it each time it sees it.
 void VehicleControl::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {

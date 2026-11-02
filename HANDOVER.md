@@ -257,6 +257,16 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 
 ## 10. Push log (newest first)
 
+- **2026-11-02** — `progress-check`: readability pass at Aidan's request, no behaviour change. Spec-fixed
+  names untouched. Added two protected helpers to `UGVModule.h` (`waitForStartBarrier()`,
+  `tmmHasStopped()`) replacing code copied into all six modules; TMM now has `MODULE_START_ORDER`,
+  `moduleName()` (messages say "LiDAR" not "bit 2"), `monitorHeartbeats` renamed `checkHeartbeats`,
+  `JOIN_TIMEOUT_MS` renamed `THREAD_STOP_WAIT_MS`; LiDAR parser variables renamed (`dist1Index`,
+  `scaleFactor`, `angleStep`, `pointCount`, `distanceMm`...) and magic numbers named (`STX`, `ETX`,
+  timeouts, `SCAN_PERIOD_MS`). Builds 0 errors/0 compiler warnings. Harness re-run (mock in simulator
+  `sRN` form): 32.1 scans/s, LiDAR loss -> full shutdown 2.1 s later, `q` -> exit 0.1 s, exit code 0;
+  index 90 = (0.57, -0.57), index 180 = (2.00, 0.00) as before. Aidan: hold `full-build` for now.
+
 - **2026-11-02** — docs only. **progress-check passed on the real simulator (Aidan's run):** auth OK with
   the placeholder ID `5555555`, 361 points per scan printed continuously, `q` shuts everything down.
   Stationary vehicle: obstacle ~0.78 m dead ahead (indices 156–201), something ~0.16 m off one side

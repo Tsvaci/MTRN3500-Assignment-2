@@ -24,7 +24,7 @@ private:
     // Latest parsed scan, local to this thread until processSharedMemory copies it out
     array<double>^ x_;
     array<double>^ y_;
-    unsigned int scanCount_;
+    unsigned int scanCount_;                      // Successful scans since the thread started
 
     error_state authenticate();                   // Send zID, expect "OK"
     error_state requestScan();                    // Send <STX>sRN LMDscandata<ETX>
@@ -33,6 +33,11 @@ private:
     void printScan();                             // Readable x,y pairs on the terminal
     void heartbeat();                             // Mark this thread alive in SM_TM
 
-    literal int READ_BUFFER_SIZE = 16384;
-    literal int PRINT_EVERY_N_SCANS = 25;         // 50 Hz sensor -> print twice per second
+    literal int READ_BUFFER_SIZE = 16384;         // One scan reply is about 2.5 KB; plenty of room
+    literal int RECEIVE_TIMEOUT_MS = 2000;        // Give up on a reply after this long
+    literal int SEND_TIMEOUT_MS = 1000;
+    literal int SCAN_PERIOD_MS = 20;              // 50 Hz sensor, so ask at most every 20 ms
+    literal int PRINT_EVERY_N_SCANS = 25;         // Printing every scan would flood the screen
+    literal unsigned char STX = 0x02;             // Start-of-text byte that opens every LiDAR message
+    literal unsigned char ETX = 0x03;             // End-of-text byte that closes it
 };
