@@ -80,7 +80,10 @@ MTRN3500-Exemplar-2/
   MTRN3500 Assignment 2.sln
   include/                          provided headers (UGVModule.h, NetworkedModule.h,
                                     SMObjects.h, ControllerInterface.h)
-  libs/                             four ControllerInterface_*.lib files, linked by the project
+  libs/                             ControllerInterface_*.lib files, linked by the project.
+                                    x64_Debug is the UPDATED lib (VS > 17.9, see §6); the original is
+                                    kept as ControllerInterface_x64_Debug_old.lib. include/ likewise has
+                                    the updated ControllerInterface.h and the original as _old.h.
   MATLAB Display Engine/            provided, run runner.m in MATLAB (TCP server on 127.0.0.1:28000)
   MATLAB Legacy Display Engine/     provided
   MTRN3500 Assignment 2/            the Visual Studio project
@@ -151,6 +154,13 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
 - §11 says submit only the module `.h/.cpp` files plus main, but students must also edit
   `SMObjects.h` (crash avoidance) and `NetworkedModule.h` (address) — submission list should include them.
 - Starter zip ships `.vs/`, `Debug/`, `x64/` and `.vcxproj.user` — strip before release.
+- **Provided ControllerInterface library does not link on VS newer than 17.9** (`LNK2028`/`LNK2019`
+  unresolved `ControllerInterface::GetState`). Aidan supplied an updated `ControllerInterface_x64_Debug.lib`
+  and header on 2 Nov 2026 (header change: `controllerState` is now a native `struct`, was `value struct`).
+  Knock-on that every student will hit: a `ref class` can no longer hold a `controllerState` member
+  (`error C4368: mixed types`), so read it into a local each poll. Only the x64 Debug lib was updated
+  (no `.pdb` supplied → harmless `LNK4099` warnings); the release should ship all four libs + pdbs, and
+  keep the old ones for lab machines on older VS.
 - Project pins toolset `v143`; Visual Studio 2026 on this machine has MSVC 14.51 only, so expect a
   retarget prompt (or build with `/p:PlatformToolset=v145`). Spec should mention this.
 
@@ -169,7 +179,9 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
 
 ## 8. Current status
 
-**Branch `main`:** skeleton complete. All seven modules have header + cpp with the correct
+**Branch `main`:** skeleton complete. Updated ControllerInterface lib/header in place (2 Nov), old
+ones kept as `_old`; `Controller.h` no longer stores a `controllerState` member. Link verified with a
+temporary `GetState()` call (removed again). All seven modules have header + cpp with the correct
 inheritance, every base-class function overridden, private members and helper declarations in place,
 and empty bodies. `Main.cpp` launches TMM. `SMObjects.h` has `SM_CrashAvoidance` and the critical
 masks; `UGVModule.h` has two extra error codes and full `printError`; `NetworkedModule.h` has the
@@ -238,6 +250,11 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 5. Aidan to run `progress-check` once against the real simulator himself (never done by Claude).
 
 ## 10. Push log (newest first)
+
+- **2026-11-02** — `main` (merged into `progress-check`): swapped in Aidan's updated
+  `ControllerInterface_x64_Debug.lib` and `ControllerInterface.h` for VS > 17.9, old files renamed
+  `_old`. Removed `state_` member from `Controller.h` (C4368 with the native struct). Builds 0 errors;
+  3 linker warnings (LNK4075, 2× LNK4099 missing pdb). Temporary `GetState()` call links fine.
 
 - **2026-11-02** — `progress-check` and `main`: docs only. Fixed standing order 6 (no simulator),
   corrected the LiDAR conversion formula in §5, made `main`'s HANDOVER.md match. Re-ran
