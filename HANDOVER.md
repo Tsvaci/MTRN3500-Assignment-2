@@ -252,9 +252,17 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    other five labels (they imply 0° = right, 90° = forward, 180° = left). The code follows the
    five; confirm or correct the figure. Also: which student ID to put in `STUDENT_ID`
    (currently the placeholder `5555555`; the mock accepts any 7 digits, the simulator may not).
-5. Aidan to run `progress-check` once against the real simulator himself (never done by Claude).
+5. ~~Aidan to run `progress-check` against the real simulator.~~ Done 2 Nov 2026, passed. Still to
+   confirm left/right orientation on the simulator.
 
 ## 10. Push log (newest first)
+
+- **2026-11-02** — docs only. **progress-check passed on the real simulator (Aidan's run):** auth OK with
+  the placeholder ID `5555555`, 361 points per scan printed continuously, `q` shuts everything down.
+  Stationary vehicle: obstacle ~0.78 m dead ahead (indices 156–201), something ~0.16 m off one side
+  (indices 272–360), ~5.4 m on the other (index 0), index 271 = no echo. Left/right orientation still to
+  be confirmed by Aidan on the simulator (this also settles the Figure 1 "270°" question). Mock harness
+  still not re-run since the `sRN` change (simulator was open).
 
 - **2026-11-02** — `progress-check`: Aidan's first real-simulator run. Threads start, LiDAR connects and
   authenticates, `q` shutdown works. Every scan was rejected because the simulator answers `sRN`
