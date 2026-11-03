@@ -9,6 +9,11 @@ Protocol: client sends "<7 digits>\n" -> server replies "OK\n"; client sends
 The scene: a flat wall 2.0 m straight ahead (angle 90 deg) that spans the whole view,
 plus a post 0.8 m away at 45 deg. Zero return for the first three beams, to exercise
 the no-echo case.
+
+--moving: instead of the fixed post, a post 1.0 m away sweeps across the view, 2 degrees
+per scan served, from 10 deg (vehicle's right) to 170 deg (vehicle's left) and back. The
+scan counter in the header also advances. Added because the Weeder simulator replays one
+fixed telegram (found 3 Nov 2026), so it can't show the printout changing.
 """
 import socket, math, sys, threading, time
 
@@ -17,13 +22,24 @@ N = 361
 # The Weeder simulator (checked by Aidan, 2 Nov 2026) replies "sRN LMDscandata ...", not the
 # datasheet's "sRA". Mirror the simulator; pass --sra to test the datasheet form.
 REPLY_TOKEN = "sRA" if "--sra" in sys.argv else "sRN"
+MOVING = "--moving" in sys.argv
+POST_HALF_WIDTH_DEG = 3.0
 
-def scene_mm(i):
+def moving_post_deg(k):
+    """Angle of the moving post in the k-th telegram served on a connection (k starts at 1)."""
+    phase = (2 * k) % 320
+    return 10.0 + phase if phase <= 160 else 330.0 - phase
+
+def scene_mm(i, k):
     ang = math.radians(i * 0.5)             # 0..180
     if i < 3:
         return 0                             # no echo
+    if MOVING:
+        # post 1.0 m away, about 6 deg wide, moving with each scan
+        if abs(i * 0.5 - moving_post_deg(k)) <= POST_HALF_WIDTH_DEG:
+            return 1000
     # post at 45 deg, 0.8 m, about 6 deg wide
-    if abs(i * 0.5 - 45.0) <= 3.0:
+    elif abs(i * 0.5 - 45.0) <= 3.0:
         return 800
     # wall straight ahead at x = 2.0 m (x = r*sin(theta))
     s = math.sin(ang)
@@ -31,11 +47,11 @@ def scene_mm(i):
         return 8000                           # far away to the sides
     return int(min(2000.0 / s, 8000))
 
-def telegram():
-    hdr = [REPLY_TOKEN, "LMDscandata", "1", "1", "ABCD1234", "0", "0", "1C", "1C",
+def telegram(k):
+    hdr = [REPLY_TOKEN, "LMDscandata", "1", "1", "ABCD1234", "0", "0", f"{k:X}", f"{k:X}",
            "3A9C", "3A9C", "0", "0", "0", "1388", "168", "0", "1", "DIST1",
            "3F800000", "00000000", "0", "1388", f"{N:X}"]
-    data = [f"{scene_mm(i):X}" for i in range(N)]
+    data = [f"{scene_mm(i, k):X}" for i in range(N)]
     tail = ["0", "0", "0", "0"]   # 8-bit channels, position, name, comment
     return b"\x02" + " ".join(hdr + data + tail).encode("ascii") + b"\x03"
 
@@ -66,8 +82,8 @@ def handle(conn, addr):
                 req, _, buf = buf.partition(b"\x03")
                 req = req.lstrip(b"\x02")
                 if req == b"sRN LMDscandata":
-                    conn.sendall(telegram())
                     n += 1
+                    conn.sendall(telegram(n))
                 else:
                     conn.sendall(b"\x02sFA 1\x03")
         print(f"client gone after {n} scans", flush=True)

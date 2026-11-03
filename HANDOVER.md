@@ -23,6 +23,9 @@ controller. A crash-avoidance thread inhibits motion near obstacles.
    (and this repo, which lives inside it). Do **not** open any sibling folder
    (`Ass 1`, `Lectures`, `Quiz 1 Practice`, `GalilSimulator`, or anything else) without his
    express approval in the chat.
+   **Second machine (home PC, from 3 Nov 2026):** the same folder is
+   `C:\Users\aidan\Desktop\UNI\MTRN3500\Ass 2` (repo and `WeederSimulator` only; no PDFs or zip
+   there). The same restriction applies.
 2. **Two development branches.**
    - `progress-check` — the Week 8 progress-check deliverable (Section 9.1 of the draft). This is a
      marking point Aidan will examine, so it must stand alone and stay clean.
@@ -37,7 +40,9 @@ controller. A crash-avoidance thread inhibits motion near obstacles.
 6. **Verify, don't assume — but never launch or unzip the simulator.** The machine has Visual
    Studio 2026 Community and MATLAB R2025b. Build, then test against the Python stand-in servers in
    `tools/` (Aidan's order, 30 Oct 2026: "do not try launching or unzipping the simulator").
-   Aidan runs the real simulator himself.
+   Aidan runs the real simulator himself. **Exception, 3 Nov 2026:** in the home-PC session Aidan
+   said "you can use weeder simulator", and Claude ran it for testing. Treat that as a one-session
+   permission; ask again before launching it.
 7. Commit messages end with the `Co-Authored-By:` line for whichever Claude model is doing the work.
 8. Keep `HANDOVER.md` identical on `main` and on the working branch: when you push a branch, copy the
    updated file onto `main` too.
@@ -161,6 +166,14 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
   (`error C4368: mixed types`), so read it into a local each poll. Only the x64 Debug lib was updated
   (no `.pdb` supplied → harmless `LNK4099` warnings); the release should ship all four libs + pdbs, and
   keep the old ones for lab machines on older VS.
+- **The simulator's LiDAR is a frozen recording (found 3 Nov 2026).** Every `sRN LMDscandata` reply
+  is byte-for-byte identical, including the scan-counter and timestamp header fields, whether or
+  not the robot is driven with the arrow keys (414 replies over 45 s, checked with a raw socket
+  client that bypassed the exe). So the scan never reflects the simulated world: the obstacles it
+  shows (0.79 m dead ahead, 0.17 m to the left) are not on the map, the printout can't be shown to
+  change, and left/right can't be checked on it. Students can't demonstrate "live" data and a
+  marker can't tell live reading from a looped copy. Fix in the simulator (generate scans from the
+  world, or at least advance the counters), or change the progress-check wording.
 - Project pins toolset `v143`; Visual Studio 2026 on this machine has MSVC 14.51 only, so expect a
   retarget prompt (or build with `/p:PlatformToolset=v145`). Spec should mention this.
 
@@ -202,6 +215,12 @@ port numbers and `STUDENT_ID`. Builds clean (0 errors, 0 warnings) and the exe r
   = heartbeat + sleep 100 ms) so TMM has six real threads to start, monitor and shut down.
 - `tools/mock_lidar.py` (stand-in LiDAR service, port 23000) and `tools/test_progress_check.py`
   (harness: scan rate, server-loss path, and a `q` keystroke injected into the exe's console).
+- `mock_lidar.py --moving` + `tools/test_moving_obstacle.py` (added 3 Nov 2026): a post 1.0 m away
+  sweeps from the vehicle's right (10°) to its left (170°) and back, 2° per scan, and the scan
+  counter advances. The test checks every printed scan shows the post in the right place. This
+  stands in for the simulator, whose LiDAR is frozen (see §6). Result: 10/10 printed scans correct,
+  right → y negative, left → y positive, ahead → (1.00, 0.00). **Left/right is confirmed against
+  the agreed convention** (0° = right, 90° = ahead, 180° = left).
 
 Verified results (30 Oct 2026, mock server, not the simulator):
 | Check | Result |
@@ -252,10 +271,26 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    other five labels (they imply 0° = right, 90° = forward, 180° = left). The code follows the
    five; confirm or correct the figure. Also: which student ID to put in `STUDENT_ID`
    (currently the placeholder `5555555`; the mock accepts any 7 digits, the simulator may not).
-5. ~~Aidan to run `progress-check` against the real simulator.~~ Done 2 Nov 2026, passed. Still to
-   confirm left/right orientation on the simulator.
+5. ~~Aidan to run `progress-check` against the real simulator.~~ Done 2 Nov 2026, passed; re-run
+   by Claude 3 Nov 2026, passed. Left/right can't be checked on the simulator (its LiDAR is frozen,
+   §6); it was checked against the moving-post mock instead. Confirm once on the real robot.
+6. Low-priority robustness points for `full-build` (found in review 3 Nov 2026, not touched in
+   `progress-check`): (a) if start-up takes over ~2 s (slow connect to the real robot), the
+   heartbeat stopwatches are already stale when TMM's loop starts, which could cause a false
+   critical shutdown; restart them after the barrier. (b) The exe exits with code 0 even after a
+   critical-failure shutdown. (c) A LiDAR that stays connected but sends nothing produces repeated
+   timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-03** — `progress-check` (home PC): tests only, no exe code changed. Claude ran the
+  real simulator (Aidan's permission): build 0 errors; 361 points per scan at ~25 scans/s; `q` ->
+  all threads stopped, exit 0.1 s later; simulator killed mid-run -> critical LiDAR shutdown 2.2 s
+  later; starting straight after the simulator works. Found the simulator's LiDAR is a frozen
+  recording (§6). Added `mock_lidar.py --moving` and `tools/test_moving_obstacle.py` (10/10 pass,
+  left/right confirmed). Original harness re-run: 32.1 scans/s, server loss and `q` clean.
+  Gotcha: a bare TCP connect-and-close to the simulator's port 23000 just before the exe connects
+  made the exe's login time out once; don't probe the port while testing against the simulator.
 
 - **2026-11-02** — `progress-check`: comments only. Removed the `// ----` separator lines and rewrote
   comments in very plain language (Aidan's request: no spec section numbers or jargon). Script check
