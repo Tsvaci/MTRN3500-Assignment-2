@@ -267,10 +267,9 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    one-page report in `docs/`, then the GR-U01 bonus. Add mock servers for GNSS (replay
    `GPSData.dat`), VC and display to `tools/` as needed. Crash avoidance is non-critical
    (restartable), decided by Aidan 2 Nov 2026.
-4. Open questions for Aidan: Figure 1's "270°" label sits on the +X axis, which contradicts the
-   other five labels (they imply 0° = right, 90° = forward, 180° = left). The code follows the
-   five; confirm or correct the figure. Also: which student ID to put in `STUDENT_ID`
-   (currently the placeholder `5555555`; the mock accepts any 7 digits, the simulator may not).
+4. Figure 1's "270°" label on the +X axis is still wrong in the spec; the code follows the other
+   five labels (0° = right, 90° = forward, 180° = left), confirmed by the moving-post mock test.
+   `STUDENT_ID` is `5481380` (z5481380, set 3 Nov 2026; was the placeholder `5555555`).
 5. ~~Aidan to run `progress-check` against the real simulator.~~ Done 2 Nov 2026, passed; re-run
    by Claude 3 Nov 2026, passed. Left/right can't be checked on the simulator (its LiDAR is frozen,
    §6); it was checked against the moving-post mock instead. Confirm once on the real robot.
@@ -282,6 +281,15 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-03** — `progress-check` (home PC): comment rewrite and student ID. Aidan found the
+  comments over-explanatory and "AI-ish"; all comments in the seven modules, Main and our additions
+  to the provided headers are now short and plain (no narration, no restating function names, no
+  spec part/appendix numbers, no personal names). Original starter comments untouched. Script check
+  confirmed the code (comments and whitespace stripped) is identical in all 18 files. `STUDENT_ID`
+  set to `5481380` (z5481380). Builds 0 errors; simulator logged "authenticated 5481380"; moving-post
+  test 10/10; original harness 32.2 scans/s, server loss and `q` clean. Style rule for future
+  comments: one short line where the code isn't self-explanatory, otherwise none.
 
 - **2026-11-03** — `progress-check` (home PC): tests only, no exe code changed. Claude ran the
   real simulator (Aidan's permission): build 0 errors; 361 points per scan at ~25 scans/s; `q` ->

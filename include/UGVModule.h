@@ -22,9 +22,8 @@ enum error_state {
 	ERR_INVALID_DATA,
 	ERR_SM,
 	ERR_CONNECTION,
-	// Additional error types defined for this solution
-	ERR_AUTHENTICATION,		// Server rejected the zID authentication
-	ERR_TIMEOUT				// Expected data did not arrive in time
+	ERR_AUTHENTICATION,
+	ERR_TIMEOUT
 };
 
 ref class UGVModule abstract
@@ -92,10 +91,7 @@ ref class UGVModule abstract
 	protected:
 		SM_ThreadManagement^ SM_TM_;
 
-		// Helpers shared by every module (added for this solution).
-
-		// Wait at TMM's start-up barrier so that all threads begin their main loops together.
-		// After start-up TMM removes the barrier, so a restarted thread skips straight past.
+		// TMM nulls the barrier after start-up, so restarted threads skip it.
 		void waitForStartBarrier()
 		{
 			Barrier^ barrier = nullptr;
@@ -108,8 +104,6 @@ ref class UGVModule abstract
 			}
 		}
 
-		// True when TMM has stopped refreshing its own stopwatch, i.e. TMM is no longer running.
-		// Every module then shuts itself down rather than carrying on unsupervised.
 		bool tmmHasStopped()
 		{
 			bool stopped = false;

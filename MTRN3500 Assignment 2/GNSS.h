@@ -1,8 +1,8 @@
 #pragma once
 /*
-GNSS.h - GNSS Module (Part 3)
-Connects to the Novatel BESTUTM binary stream, validates each record with the CRC32,
-publishes Northing/Easting/Height to SM_GPS and prints them with both CRCs. Non-critical thread.
+GNSS.h - GNSS Module
+Reads Novatel BESTUTM records, checks the CRC32 and writes Northing/Easting/Height to SM_GPS.
+Non-critical.
 */
 
 #include <NetworkedModule.h>
@@ -11,28 +11,27 @@ ref class GNSS : public NetworkedModule {
 public:
     GNSS(SM_ThreadManagement^ SM_TM, SM_GPS^ SM_GPS);
 
-    error_state connect(String^ hostName, int portNumber) override;   // TCP connect (no authentication)
-    error_state communicate() override;                               // Read and decode one BESTUTM record
-    error_state processSharedMemory() override;                       // Publish position to SM_GPS
+    error_state connect(String^ hostName, int portNumber) override;
+    error_state communicate() override;
+    error_state processSharedMemory() override;
     bool getShutdownFlag() override;
     void threadFunction() override;
 
 private:
     SM_GPS^ SM_GPS_;
 
-    // Latest decoded record
     double northing_;
     double easting_;
     double height_;
     unsigned long receivedCRC_;
     unsigned long calculatedCRC_;
 
-    error_state findHeader(int% offset);         // Locate the AA 44 12 sync bytes in ReadData
-    error_state decodeRecord(int offset);        // Pull the fields out of a complete record
+    error_state findHeader(int% offset);         // Sync bytes AA 44 12
+    error_state decodeRecord(int offset);
     void printPosition();
     void heartbeat();
 
-    // CRC32 routines from Appendix A of the specification
+    // CRC32 routines provided with the spec
     static unsigned long CRC32Value(int i);
     static unsigned long CalculateBlockCRC32(unsigned long ulCount, unsigned char* ucBuffer);
 

@@ -1,9 +1,8 @@
 #include "GNSS.h"
 
-// Placeholder for the progress check. For now this thread only tells TMM it is running,
-// so TMM has a real thread to start, watch and stop. The GNSS reading comes in the full build.
+// Progress-check stub: heartbeat only.
 
-static const int STUB_LOOP_PERIOD_MS = 100;	// How often the stub reports "alive"
+static const int STUB_LOOP_PERIOD_MS = 100;
 
 GNSS::GNSS(SM_ThreadManagement^ SM_TM, SM_GPS^ SM_GPS) {
 	SM_TM_ = SM_TM;
@@ -27,7 +26,6 @@ error_state GNSS::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Stop when TMM sets this module's shutdown bit, or when TMM itself has stopped running.
 bool GNSS::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -45,7 +43,6 @@ void GNSS::threadFunction() {
 
 	waitForStartBarrier();
 
-	// Stub loop: nothing to do yet except tell TMM this thread is still alive.
 	while (!getShutdownFlag()) {
 		heartbeat();
 		Thread::Sleep(STUB_LOOP_PERIOD_MS);
@@ -63,7 +60,6 @@ error_state GNSS::decodeRecord(int offset) {
 
 void GNSS::printPosition() {}
 
-// Tell TMM this thread is alive: TMM watches for this bit and clears it each time it sees it.
 void GNSS::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {

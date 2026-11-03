@@ -1,7 +1,6 @@
 /*
 Main.cpp
-Entry point. The only thread created here is Thread Management; it creates the shared memory
-and every other thread (see Section 5 of the specification).
+Starts the TMM thread. TMM creates the shared memory and all other threads.
 */
 #include "TMM.h"
 

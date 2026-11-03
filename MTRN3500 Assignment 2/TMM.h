@@ -1,12 +1,11 @@
 #pragma once
 /*
-TMM.h - Thread Management Module (Part 1)
-Creates the shared memory, starts every other thread, monitors their heartbeats,
-restarts failed non-critical threads, and performs routine or emergency shutdown.
+TMM.h - Thread Management Module
+Creates shared memory, starts and monitors all module threads, restarts non-critical
+threads and handles shutdown.
 */
 
-// Controller.h first: it brings in <Windows.h>, which must be seen before "using namespace System;"
-// (see the note in Controller.h).
+// Must come before UGVModule.h (Windows.h conflicts with "using namespace System", C3699).
 #include "Controller.h"
 #include <UGVModule.h>
 #include "LiDAR.h"
@@ -19,29 +18,18 @@ ref class ThreadManagement : public UGVModule {
 public:
     ThreadManagement();
 
-    // Create every shared memory object (called once from main before the thread starts)
     error_state setupSharedMemory();
-
-    // Publish TMM's own "alive" signal so the modules know TMM is still supervising them
-    error_state processSharedMemory() override;
-
-    // Tell every module to stop, then wait for each thread to finish
+    error_state processSharedMemory() override;   // Refresh the TMM alive signal
     void shutdownModules();
-
-    // True when another module (e.g. the controller's shutdown button) has asked TMM to stop
-    bool getShutdownFlag() override;
-
-    // TMM's main loop: start the modules, supervise them, shut them down
+    bool getShutdownFlag() override;              // Shutdown requested by another module
     void threadFunction() override;
 
 private:
-    // Shared memory owned by TMM and handed to the other modules (SM_TM_ itself lives in UGVModule)
-    SM_Laser^ SM_Laser_;               // LiDAR scan, x/y in metres
-    SM_GPS^ SM_GPS_;                   // GNSS position
-    SM_VehicleControl^ SM_VC_;         // Speed and steering commands
-    SM_CrashAvoidance^ SM_CA_;         // Crash-avoidance "inhibit motion" decision
+    SM_Laser^ SM_Laser_;
+    SM_GPS^ SM_GPS_;
+    SM_VehicleControl^ SM_VC_;
+    SM_CrashAvoidance^ SM_CA_;
 
-    // Module objects
     Controller^ controller_;
     LiDAR^ lidar_;
     CrashAvoidance^ crashAvoidance_;
@@ -49,7 +37,6 @@ private:
     Display^ display_;
     GNSS^ gnss_;
 
-    // Threads, one per module
     Thread^ controllerThread_;
     Thread^ lidarThread_;
     Thread^ crashAvoidanceThread_;
@@ -57,31 +44,18 @@ private:
     Thread^ displayThread_;
     Thread^ gnssThread_;
 
-    // Start all module threads in the order required for tele-operation
     error_state startThreads();
-
-    // Create (or re-create) the module object and thread identified by its heartbeat bit
-    error_state startModule(uint8_t moduleBit);
-
-    // Check every module's heartbeat and restart dead non-critical ones.
-    // Returns the bit of a dead critical module (so the caller can shut down), or 0 if all is well.
-    uint8_t checkHeartbeats();
-
-    // True if 'q' has been pressed in this console window
+    error_state startModule(uint8_t moduleBit);   // Also used for restarts
+    uint8_t checkHeartbeats();                    // Returns the bit of a dead critical module, or 0
     bool shutdownKeyPressed();
-
-    // Readable module name for console messages, e.g. bit_LASER -> "LiDAR"
     static String^ moduleName(uint8_t moduleBit);
 
-    // The six module threads, in the order TMM starts them: inputs (controller, LiDAR) first,
-    // then the safety check (crash avoidance), then the actuator (vehicle control), then the
-    // display, and finally the non-critical GNSS.
+    // Inputs, then crash avoidance, then the actuator, display, and GNSS last.
     static array<uint8_t>^ MODULE_START_ORDER = gcnew array<uint8_t> {
         bit_CONTROLLER, bit_LASER, bit_CRASHAVOIDANCE, bit_VC, bit_DISPLAY, bit_GPS
     };
 
-    // Timing constants (milliseconds). HEARTBEAT_TIMEOUT_MS is in SMObjects.h because modules use it too.
-    literal int MONITOR_PERIOD_MS = 50;      // How often TMM checks heartbeats and the keyboard
-    literal int THREAD_STOP_WAIT_MS = 3000;  // How long shutdown waits for each thread to finish
-    literal int THREAD_COUNT = 7;            // TMM + six modules: the number of threads the barrier waits for
+    literal int MONITOR_PERIOD_MS = 50;
+    literal int THREAD_STOP_WAIT_MS = 3000;
+    literal int THREAD_COUNT = 7;                 // TMM + six modules
 };

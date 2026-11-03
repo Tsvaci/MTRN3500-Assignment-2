@@ -18,16 +18,15 @@ For clarification of inheritance requirements see diagram in the assignment spec
 //#define WEEDER_ADDRESS "192.168.1.200"
 #define DISPLAY_ADDRESS "127.0.0.1" // Display is always running locally (run the MATLAB code separately)
 
-// Service ports (see the Assignment 2 Service Details document)
+// Service ports
 #define LIDAR_PORT    23000
 #define GNSS_PORT     24000
 #define VC_PORT       25000
 #define GRU01_PORT    26000
 #define DISPLAY_PORT  28000
 
-// Student zID digits (without the leading 'z') used to authenticate with the LiDAR and vehicle control services.
-// The authentication message is these 7 digits followed by a newline (8 characters in total).
-#define STUDENT_ID "5555555"
+// zID digits without the 'z', for LiDAR and VC authentication.
+#define STUDENT_ID "5481380"
 
 ref class NetworkedModule abstract : public UGVModule
 {
