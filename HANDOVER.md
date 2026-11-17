@@ -125,7 +125,7 @@ Critical failure → full shutdown. Non-critical failure → restart that thread
 | LiDAR | weeder | 23000 | yes | send `<zID digits>\n` (8 chars), expect `OK\n`. Then `0x02 sRN LMDscandata 0x03`. Reply is `sRA LMDscandata …` per the datasheet, but **the simulator replies `sRN LMDscandata …`** (found by Aidan 2 Nov 2026); accept both. ASCII hex fields; preconfigured 50 Hz, 0–180°, 0.5° step → 361 `DIST1` points in mm. |
 | GNSS | weeder | 24000 | no | continuous Novatel binary. Sync `AA 44 12`, header len at byte 3 (=28), msg ID at 4 (726 = BESTUTM), body len at 8 (=80). Northing double at H+16, Easting H+24, Height H+32, CRC32 at H+80 over header+body. `GPSData.dat` in the simulator folder is this exact stream. |
 | Vehicle control | weeder | 25000 | yes | send `# <steer> <speed> <wdog> #`, steer ±40°, speed ±1 m/s, wdog alternates 0/1; freeze it to inhibit motion. |
-| Display | 127.0.0.1 | 28000 | no | MATLAB server. Send X array as bytes, sleep 10 ms, then Y array (Appendix B). |
+| Display | 127.0.0.1 | 28000 | no | MATLAB server. Send X array as bytes, sleep 10 ms, then Y array (Appendix B). **Values must be in millimetres** (Aidan's clarification to students, 17 Nov 2026: "send array<Byte>^ x and array<Byte>^ y pair as millimeters"). SM_Laser holds metres, so Display multiplies by 1000 before sending. |
 | GR-U01 (bonus) | weeder | 26000 | no | NMEA `$GNGGA`/`$GPGGA` text. |
 
 "weeder" = `127.0.0.1` for the simulator, `192.168.1.200` for the real robot (`WEEDER_ADDRESS` in NetworkedModule.h).
@@ -147,6 +147,25 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
 - Final (§9.2, 20 marks): display plot, GNSS print with both CRCs, drive from controller, shutdown by
   key and by controller button, crash-avoidance report, crash-avoidance implementation, architecture,
   error handling and validation.
+
+**Crash-avoidance wording revised by Aidan (17 Nov 2026).** Described to students as a clarification,
+not a new requirement. Part 7 now reads, in substance:
+- The system must (1) process controller and LiDAR data, (2) assess collision risk from the movement
+  commands and the LiDAR data, (3) take appropriate action *such as reducing speed, adjusting vehicle
+  motion, or stopping when necessary*.
+- If the UGV is moving towards an obstacle within **1 m or less** it must respond appropriately:
+  reduce speed, adjust steering, or inhibit motion. No LiDAR behind the vehicle, so only forward
+  movement and turning motions need avoidance.
+- Marked on correctness (detects and responds), sophistication (considers both directional inputs and
+  current vehicle motion), robustness (varying conditions, edge cases); mainly critical thinking about
+  how the UGV can collide.
+- Needs a new/changed shared-memory structure; students must understand the LiDAR data format.
+- Marking item f (6 marks), crash avoidance as a combination of LiDAR and VC data: obstacle in front
+  while moving → appropriate action (slow down, or stop immediately if needed); obstacle to the side
+  when turning that way → adjust the turn, slow down, or stop. Must match the one-page report; the
+  student must be able to explain the code or gets zero.
+- Consequence for the exemplar: the old "inhibit flag + frozen watchdog" (stop-only) design was
+  replaced in `full-build` by graded speed limiting and steering easing (see §7).
 
 ## 6. Problems found in the draft (Aidan has acknowledged these; fix in the spec, not in code)
 
@@ -191,6 +210,10 @@ is a native (non-CLR) class; keyboard mode is selected by the constructor argume
   the watchdog. Because crash avoidance is restartable, the flag is **fail-safe**: it starts `true`, so
   nothing moves until crash avoidance has cleared a scan. In `full-build`, VC must also treat a stale
   crash-avoidance update (thread down or restarting) as inhibit.
+  **Superseded in `full-build` (17 Nov 2026) after the spec wording changed:** crash avoidance now
+  publishes limits (maximum forward speed, steering limits) rather than a yes/no flag, so it can slow
+  down and ease the steering as well as stop. The fail-safe idea stays: limits start at "stopped" and
+  VC stops if crash avoidance goes quiet. `progress-check` keeps the original flag (no change there).
 
 ## 8. Current status
 
@@ -281,6 +304,12 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-17** — docs only (`progress-check` and `main`). Recorded Aidan's two spec changes: the
+  revised crash-avoidance wording (Part 7 and marking item f, §5) and the display millimetre
+  clarification (§5 table). Noted in §7 that `full-build` replaces the stop-only flag with speed and
+  steering limits. A zip of `main` (`MTRN3500-Exemplar-2-main.zip`, commit `ce0fee0`) is now in the
+  home-PC `Ass 2` folder; it matches the local `main`.
 
 - **2026-11-03** — `progress-check` (home PC): comment rewrite and student ID. Aidan found the
   comments over-explanatory and "AI-ish"; all comments in the seven modules, Main and our additions
