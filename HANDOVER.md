@@ -208,10 +208,24 @@ not a new requirement. Part 7 now reads, in substance:
   vehicle base frame (x forward, y left) appears rotated 90°, with everything on the vehicle's right
   clipped off. Display therefore sends X = −y, Y = x. The spec wording should say what frame the
   engine expects. Raised with Aidan; may explain students' odd plots.
-- **Frozen simulator LiDAR blocks crash avoidance (17 Nov 2026, by analysis; not yet run).** The
-  frozen scan has returns 0.16 m to the left (indices 272–360) and 0.79 m ahead. The 0.16 m points sit
-  inside the vehicle corridor right at the sensor, so any decent crash avoidance stops all forward
-  motion in the simulator. Students may disable their safety code to demo driving.
+- **Frozen simulator LiDAR blocks crash avoidance (confirmed on the simulator, 17 Nov 2026).** The
+  frozen scan has returns 0.16 m to the left (indices 272–360, x ≈ 0–0.11 m) and 0.79 m ahead. The
+  0.16 m points sit inside the vehicle corridor right at the sensor, so the exemplar's crash avoidance
+  allows no forward motion at all in the simulator ("clear path 0.00 m"), straight or turning;
+  reversing works. Students will hit this and may disable their safety code to demo driving. The
+  SICK LMS151's specified minimum range is believed to be 0.5 m (check `SICKLMS151.pdf`), which
+  suggests these 0.16 m readings are not realistic. Ignoring short ranges in code is unsafe (an
+  approaching obstacle would vanish), so the fix belongs in the simulator. Awaiting Aidan's call.
+- **Simulator steering gauge shows the opposite sign (17 Nov 2026).** Commanding +20° turns the
+  simulated vehicle LEFT (wheels and world rotation agree) but its Steer gauge reads −20.0. The
+  exemplar's convention (+ = left, matching the y-left vehicle frame) is correct for the motion;
+  students reading the gauge will be confused. Fix the gauge or state the convention in the spec.
+- **Simulator facts (17 Nov 2026):** VC login is the same as the LiDAR (`<zID>
+` → `OK
+`); the
+  command `# <steer> <speed> <wdog> #` with no newline is accepted and logged in `log_VC.txt`; the
+  server sends nothing back after login; a frozen watchdog value stops the vehicle even with speed
+  0.5 (checked by comparing frames); GNSS streams 2 records/s.
 - **`GPSData.dat` is synthetic.** Northing and Easting start at 0; Easting rises 0.1 per record,
   Northing wanders a few metres either side of 0; zone 56 H, height 108.389. Correct output looks
   like "Northing 0.100 Easting 0.100" — students may think they have a decoding bug.
@@ -293,8 +307,8 @@ Weeder simulator or the robot**. Summary (details and per-component walkthrough 
 - **Controller:** Xbox (`INPUT_TYPE = 0`); speed = (RT − LT) × 1 m/s, steering = −stickX × 40° (+ left),
   10% deadzone, disconnected → 0/0 with a one-off message, **B button** → shutdown request (sets
   `bit_TM`; TMM runs the normal shutdown).
-- **VC:** zID auth like the LiDAR (assumed — confirm on simulator), sends `# %.3f %.3f %d #`
-  (steer, speed, watchdog) every 50 ms, no newline; watchdog toggles each message; caps forward speed
+- **VC:** zID auth like the LiDAR, sends `# %.3f %.3f %d #` (steer, speed, watchdog) every 50 ms,
+  no newline (both confirmed on the simulator); watchdog toggles each message; caps forward speed
   and steering to crash-avoidance limits; holds the vehicle (speed 0) if those limits are > 300 ms
   old; final stop command on exit; status line twice a second while driving.
 - **Display:** mm, engine frame (X = −y, Y = x), provided BlockCopy routine, X, 10 ms, Y, 10 Hz.
@@ -314,6 +328,16 @@ display mm/frame correct; GNSS 196 OK + 32 deliberate mismatches rejected, value
 B → exit 0 with 6 threads stopped and a final stop command; display lost → exit 2 naming Display;
 GNSS dropped every 15 records → restarted, program keeps running; `q` → exit 0.1 s later.
 Real MATLAB engine (R2025a) run with a post 2 m ahead and one front-left: plot correct.
+
+**Weeder simulator run (17 Nov 2026, Aidan's OK; test exe with scripted controller, mock display):**
+both logins OK; 482 scans in 21 s (~22/s); 43 GNSS records (2/s), all CRCs OK; forward driving fully
+blocked by the frozen scan as predicted (§6); reversing sent at −1.0 m/s; B button → all six threads
+stopped, exit 0. Steering sign checked separately with a raw socket: +20° turns left (§6).
+
+**Controller hardware:** Aidan has a PS4 controller, not an Xbox one. The provided library uses
+XInput, which a DualShock 4 does not speak natively; it needs DS4Windows (free, uses the ViGEmBus
+driver) to appear as an Xbox 360 controller. Then R2/L2 = triggers, right stick = steering, and the
+shutdown button B = Circle (○). No code change needed. Not yet tested with the real controller.
 
 ### Build notes (important)
 
@@ -352,8 +376,8 @@ Real MATLAB engine (R2025a) run with a post 2 m ahead and one front-left: plot c
 1. ~~Skeleton on `main`.~~ Done.
 2. ~~`progress-check` branch.~~ Done and verified. Aidan to review it as the Week 8 marking point.
 3. ~~`full-build` Parts 3–7 + report.~~ Done 17 Nov 2026 (see §8). Still to do on `full-build`:
-   (a) run against the Weeder simulator (needs Aidan's OK) to confirm the VC auth/command format,
-   the steering sign (+ = left assumed) and GNSS rate; (b) Aidan's review using
+   (a) ~~simulator run~~ done 17 Nov 2026 (§8); (a2) test with Aidan's PS4 controller via
+   DS4Windows; (b) Aidan's review using
    `docs/REVIEW_GUIDE.md`; (c) GR-U01 bonus; (d) real-robot check of crash-avoidance geometry
    constants (`CrashAvoidance.h`) and whether the LiDAR sees the robot itself.
 4. Figure 1's "270°" label on the +X axis is still wrong in the spec; the code follows the other
@@ -374,8 +398,9 @@ Real MATLAB engine (R2025a) run with a post 2 m ahead and one front-left: plot c
 - **2026-11-17** — `full-build` (new branch from `progress-check`, home PC): Parts 3–7 implemented,
   crash avoidance redesigned for the revised wording (graded speed + steering easing), report and
   review guide in `docs/`, new stand-ins and a 36-check test in `tools/` (36/36 pass), real MATLAB
-  engine checked (found the display-frame issue, §6). Not yet run on the Weeder simulator. Commits are
-  local only so far (not pushed) — `gh` is not installed on the home PC.
+  engine checked (found the display-frame issue, §6). Then run on the Weeder simulator with Aidan's
+  permission (results in §8; steering sign confirmed, gauge sign quirk and frozen-scan blocking
+  recorded in §6). Commits are local only so far (not pushed) — `gh` is not installed on the home PC.
 
 - **2026-11-17** — docs only (`progress-check` and `main`). Recorded Aidan's two spec changes: the
   revised crash-avoidance wording (Part 7 and marking item f, §5) and the display millimetre

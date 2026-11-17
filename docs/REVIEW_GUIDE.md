@@ -169,6 +169,14 @@ controller and the vehicle stops.
 **Settings:** `INPUT_TYPE` in `Controller.h` (0 = Xbox, 1 = keyboard). Keyboard mode has no triggers or buttons,
 so speed comes from the right-stick-Y key and the B-button shutdown can't be shown.
 
+**Using a PS4 controller:** the provided library only reads Xbox-style (XInput) controllers. Install DS4Windows
+(free) so the PS4 controller appears as an Xbox 360 controller. Then R2 = forward, L2 = reverse, right stick =
+steer, and **Circle (○) = B = shutdown**. No code change is needed.
+
+**Checked on the simulator:** positive steering turns the vehicle left, as the code assumes. The simulator's Steer
+gauge shows the opposite sign (+20° sent, the gauge reads −20.0, and the car turns left). Trust the motion, not
+the gauge. The simulator also stops the car if the watchdog value stops changing.
+
 **Likely questions**
 - *Why is `controllerState` a local variable, not a class member?* It is a native C++ struct and the class is a
   managed `ref class`. Mixing them is a compile error (C4368).
@@ -286,7 +294,10 @@ Every function returns an `error_state`, and `UGVModule::printError` turns it in
   (`tools/build_test_exe.py`; the repo code is not changed). **36/36 checks pass.** It covers every table above,
   plus the `q` key, the B button, a lost display, and a dropping GNSS.
 - The real MATLAB display engine was run against the program to confirm the plot (see section 2).
-- Not yet done: the real Weeder simulator (needs your OK) and the real robot. See below.
+- Weeder simulator (17 Nov 2026): logins OK, about 22 scans/s, GNSS 2 records/s with every CRC OK, reversing
+  works, B shutdown clean. Forward driving is blocked by crash avoidance because of the frozen scan (question 3
+  below).
+- Not yet done: the real robot, and a real controller.
 
 Run it yourself (repo root, after building):
 ```
@@ -298,9 +309,11 @@ python tools/test_full_build.py "%TEMP%\mtrn_test\Executables\MTRN3500 Assignmen
 
 1. **Display frame:** the spec says "vehicle base frame", but the provided engine only shows X-right / Y-forward
    correctly (section 2). Which wording should the spec use?
-2. **Steering sign and command format:** the code assumes positive steering = left and sends
-   `# 12.345 0.500 1 #` with no newline. Both need confirming on the simulator.
-3. **Simulator LiDAR is frozen** and shows a return 0.16 m to the left plus 0.79 m ahead. Good crash avoidance will
-   therefore refuse to drive forward in the simulator. Students may disable their safety code to make the driving
-   demo work. The simulator should generate live scans.
+2. ~~Steering sign and command format~~: confirmed on the simulator. The Steer gauge shows the opposite sign
+   to the command, which will confuse students. Fix the gauge or state the convention in the spec.
+3. **Simulator LiDAR is frozen** and shows returns 0.16 m to the left plus 0.79 m ahead. Confirmed on the
+   simulator: the exemplar's crash avoidance allows no forward motion at all there. Students may disable their
+   safety code to make the driving demo work. Ignoring short readings in code would be unsafe (an obstacle you
+   are approaching would vanish), so the fix belongs in the simulator: live scans, or at least no phantom 0.16 m
+   object.
 4. **Robot dimensions** for crash avoidance (width, wheelbase, LiDAR position).
