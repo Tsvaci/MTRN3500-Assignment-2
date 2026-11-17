@@ -32,10 +32,11 @@ private:
     void heartbeat();
 
     literal int READ_BUFFER_SIZE = 16384;         // One reply is ~2.5 KB
-    literal int RECEIVE_TIMEOUT_MS = 2000;
+    literal int RECEIVE_TIMEOUT_MS = 1000;        // Under the 2 s heartbeat timeout
     literal int SEND_TIMEOUT_MS = 1000;
     literal int SCAN_PERIOD_MS = 20;              // Sensor runs at 50 Hz
-    literal int PRINT_EVERY_N_SCANS = 25;
+    literal int PRINT_EVERY_N_SCANS = 100;        // Every few seconds, so GNSS output stays readable
+    literal int MAX_CONSECUTIVE_TIMEOUTS = 3;
     literal unsigned char STX = 0x02;
     literal unsigned char ETX = 0x03;
 };

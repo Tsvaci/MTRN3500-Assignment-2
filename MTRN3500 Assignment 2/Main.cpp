@@ -17,6 +17,10 @@ int main(array<String^>^ args) {
 	TMMThread->Start();
 	TMMThread->Join();
 
+	if (TMM->endedWithCriticalFailure()) {
+		Console::WriteLine("Program ended after a critical failure.");
+		return 2;
+	}
 	Console::WriteLine("Program complete.");
 	return 0;
 }

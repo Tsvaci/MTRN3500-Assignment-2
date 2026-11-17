@@ -23,12 +23,14 @@ public:
     void shutdownModules();
     bool getShutdownFlag() override;              // Shutdown requested by another module
     void threadFunction() override;
+    bool endedWithCriticalFailure();              // For the program's exit code
 
 private:
     SM_Laser^ SM_Laser_;
     SM_GPS^ SM_GPS_;
     SM_VehicleControl^ SM_VC_;
     SM_CrashAvoidance^ SM_CA_;
+    bool criticalFailure_;
 
     Controller^ controller_;
     LiDAR^ lidar_;

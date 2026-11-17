@@ -186,6 +186,7 @@ error_state LiDAR::processSharedMemory() {
 	try {
 		Array::Copy(x_, SM_Laser_->x, STANDARD_LASER_LENGTH);
 		Array::Copy(y_, SM_Laser_->y, STANDARD_LASER_LENGTH);
+		SM_Laser_->scanNumber++;
 	}
 	finally {
 		Monitor::Exit(SM_Laser_->lockObject);
@@ -244,12 +245,14 @@ void LiDAR::threadFunction() {
 		return;
 	}
 
+	int consecutiveTimeouts = 0;
 	try {
 		while (!getShutdownFlag()) {
 			status = communicate();
 			heartbeat();
 
 			if (status == error_state::SUCCESS) {
+				consecutiveTimeouts = 0;
 				processSharedMemory();
 				scanCount_++;
 				if (scanCount_ % PRINT_EVERY_N_SCANS == 0) {
@@ -259,6 +262,11 @@ void LiDAR::threadFunction() {
 			else {
 				printError(status);
 				if (status == error_state::ERR_CONNECTION) {
+					break;
+				}
+				// Connected but silent: stop so TMM sees the missing heartbeat.
+				if (status == error_state::ERR_TIMEOUT && ++consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+					Console::WriteLine("LiDAR: no data for " + consecutiveTimeouts + " requests in a row - giving up.");
 					break;
 				}
 			}

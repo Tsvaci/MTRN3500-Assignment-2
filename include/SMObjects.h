@@ -33,7 +33,7 @@ constexpr uint8_t bit_CRASHAVOIDANCE =  0b01000000;
 // Defines which processes are critical and not critical
 // Ordering of processes in the mask should be based on the order in the UnitFlags type above.
 // Critical failure -> full shutdown. Non-critical failure -> restart that thread.
-// Crash avoidance can be non-critical because SM_CrashAvoidance starts with inhibit = true.
+// Crash avoidance can be non-critical because its limits start at "stopped" and VC stops if they go stale.
 constexpr uint8_t CRITICALMASK =    bit_TM | bit_LASER | bit_VC | bit_CONTROLLER | bit_DISPLAY;
 constexpr uint8_t NONCRITICALMASK = bit_GPS | bit_CRASHAVOIDANCE;
 
@@ -69,11 +69,13 @@ ref class SM_Laser
 {
 public:
     Object^ lockObject;
-    array<double>^ x;
-    array<double>^ y;
+    array<double>^ x;           // m, forward
+    array<double>^ y;           // m, left
+    unsigned int scanNumber;    // Counts up with every new scan
 
     SM_Laser() {
         lockObject = gcnew Object();
+        scanNumber = 0;
         x = gcnew array<double>(STANDARD_LASER_LENGTH);
         y = gcnew array<double>(STANDARD_LASER_LENGTH);
     }
@@ -92,12 +94,13 @@ public:
     }
 };
 
+// Written by the controller: what the driver is asking for.
 ref class SM_VehicleControl
 {
 public:
     Object^ lockObject;
-    double Speed;
-    double Steering;
+    double Speed;       // m/s, + forward
+    double Steering;    // deg, + left
 
     SM_VehicleControl() {
         lockObject = gcnew Object();
@@ -105,16 +108,24 @@ public:
 };
 
 // Written by crash avoidance, read by vehicle control.
+// VC caps the driver's forward speed and steering to these limits.
 ref class SM_CrashAvoidance
 {
 public:
     Object^ lockObject;
-    bool inhibit;               // Starts true: no motion until a scan has been checked
-    double nearestObstacle;     // m
+    double maxForwardSpeed;     // m/s
+    double maxLeftSteer;        // deg, magnitude
+    double maxRightSteer;       // deg, magnitude
+    double pathClearance;       // m, free distance along the path being driven
+    Stopwatch^ lastUpdate;      // Restarted on every update; VC stops if it goes stale
 
+    // Starts at "stopped": nothing moves until crash avoidance has checked a scan.
     SM_CrashAvoidance() {
         lockObject = gcnew Object();
-        inhibit = true;
-        nearestObstacle = 0.0;
+        maxForwardSpeed = 0.0;
+        maxLeftSteer = 0.0;
+        maxRightSteer = 0.0;
+        pathClearance = 0.0;
+        lastUpdate = Stopwatch::StartNew();
     }
 };

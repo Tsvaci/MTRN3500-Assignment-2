@@ -1,7 +1,7 @@
 #pragma once
 /*
 Controller.h - Controller Module
-Converts Xbox controller input to speed and steering in SM_VehicleControl. One button
+Converts Xbox controller input to speed and steering in SM_VehicleControl. The B button
 requests shutdown. Critical.
 */
 
@@ -26,14 +26,17 @@ private:
 
     double speed_;
     double steering_;
+    bool wasConnected_;
 
-    error_state readController();
+    error_state readController();                  // Fills speed_ and steering_
+    static double applyDeadzone(double value);
     void requestShutdown();
     void heartbeat();
 
-    literal int INPUT_TYPE = 1;            // 0 = Xbox controller, 1 = keyboard
+    literal int INPUT_TYPE = 0;            // 0 = Xbox controller, 1 = keyboard
     literal int PLAYER_NUMBER = 1;
     literal double MAX_STEER_DEG = 40.0;
     literal double MAX_SPEED_MPS = 1.0;
+    literal double DEADZONE = 0.1;         // Ignore small stick/trigger readings
     literal int POLL_PERIOD_MS = 20;
 };

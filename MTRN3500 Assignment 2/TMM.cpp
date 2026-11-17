@@ -7,6 +7,7 @@ ThreadManagement::ThreadManagement() {
 	SM_GPS_ = nullptr;
 	SM_VC_ = nullptr;
 	SM_CA_ = nullptr;
+	criticalFailure_ = false;
 }
 
 error_state ThreadManagement::setupSharedMemory() {
@@ -61,10 +62,14 @@ error_state ThreadManagement::startThreads() {
 		Console::WriteLine("TMM: WARNING - not all threads reached the start barrier in time.");
 	}
 
-	// Remove the barrier so restarted threads don't wait on it.
+	// Remove the barrier so restarted threads don't wait on it, and restart the heartbeat
+	// stopwatches so a slow start-up isn't mistaken for dead threads.
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
 		SM_TM_->ThreadBarrier = nullptr;
+		for each (uint8_t moduleBit in MODULE_START_ORDER) {
+			SM_TM_->WatchList[bitIndex(moduleBit)]->Restart();
+		}
 	}
 	finally {
 		Monitor::Exit(SM_TM_->lockObject);
@@ -229,6 +234,7 @@ void ThreadManagement::threadFunction() {
 
 	if (startThreads() != error_state::SUCCESS) {
 		Console::WriteLine("TMM: could not start all modules - shutting down.");
+		criticalFailure_ = true;
 		shutdownModules();
 		return;
 	}
@@ -240,6 +246,7 @@ void ThreadManagement::threadFunction() {
 			uint8_t deadCriticalModule = checkHeartbeats();
 			if (deadCriticalModule != 0) {
 				Console::WriteLine("TMM: CRITICAL module " + moduleName(deadCriticalModule) + " stopped responding.");
+				criticalFailure_ = true;
 				break;
 			}
 			if (shutdownKeyPressed()) {
@@ -255,8 +262,13 @@ void ThreadManagement::threadFunction() {
 	}
 	catch (Exception^ e) {
 		Console::WriteLine("TMM: unexpected error - " + e->Message);
+		criticalFailure_ = true;
 	}
 
 	shutdownModules();
 	Console::WriteLine("TMM: thread finished.");
+}
+
+bool ThreadManagement::endedWithCriticalFailure() {
+	return criticalFailure_;
 }
