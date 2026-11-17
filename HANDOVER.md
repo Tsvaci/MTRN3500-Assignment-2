@@ -404,14 +404,16 @@ controller mid-run (covered by the scripted test).
 ## 10. Push log (newest first)
 
 - **2026-11-17** — `full-build`: docs only. Live test with Aidan's PS4 controller via DS4Windows
-  3.9.9 + ViGEmBus passed (§8); setup notes added to the review guide. Still not pushed.
+  3.9.9 + ViGEmBus passed (§8); setup notes added to the review guide. **All 17 Nov work pushed**
+  (`main`, `progress-check`, new `full-build`) with plain `git push` (credential manager; `gh` not
+  needed on the home PC).
 
 - **2026-11-17** — `full-build` (new branch from `progress-check`, home PC): Parts 3–7 implemented,
   crash avoidance redesigned for the revised wording (graded speed + steering easing), report and
   review guide in `docs/`, new stand-ins and a 36-check test in `tools/` (36/36 pass), real MATLAB
   engine checked (found the display-frame issue, §6). Then run on the Weeder simulator with Aidan's
   permission (results in §8; steering sign confirmed, gauge sign quirk and frozen-scan blocking
-  recorded in §6). Commits are local only so far (not pushed) — `gh` is not installed on the home PC.
+  recorded in §6).
 
 - **2026-11-17** — docs only (`progress-check` and `main`). Recorded Aidan's two spec changes: the
   revised crash-avoidance wording (Part 7 and marking item f, §5) and the display millimetre
