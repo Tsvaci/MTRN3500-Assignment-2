@@ -97,9 +97,19 @@ MTRN3500-Exemplar-2/
     TMM.h / TMM.cpp                 (starter: stub ThreadManagement class)
 ```
 
-Planned additions (exact names required by the spec, two files per module):
-`LiDAR`, `GNSS`, `Controller`, `VC`, `Display`, `CrashAvoidance`, and bonus `GRU01`.
-Plus `docs/crash_avoidance_report.md` (the one-page theory report).
+Module files (exact names required by the spec, two files per module): `LiDAR`, `GNSS`,
+`Controller`, `VC`, `Display`, `CrashAvoidance` (all present); bonus `GRU01` not written yet.
+On `full-build` also:
+```
+  docs/crash_avoidance_report.md    the one-page crash-avoidance report (student deliverable)
+  docs/REVIEW_GUIDE.md              Aidan's walkthrough of the code per marking component
+  tools/mock_weeder.py              stand-in LiDAR (scene from a JSON file) + GNSS replay + VC logger
+  tools/mock_display.py             stand-in MATLAB display (logs the X/Y arrays it receives)
+  tools/build_test_exe.py           builds a test-only exe whose Controller reads inputs from a file
+  tools/test_full_build.py          36-check end-to-end test (4 runs)
+```
+`tools/test_progress_check.py` and `test_moving_obstacle.py` only work on `progress-check` (on
+`full-build` the exe also needs VC and display servers, and the LiDAR print is every 100 scans).
 
 ## 5. Spec facts you need (so you don't re-read the PDFs)
 
@@ -125,7 +135,7 @@ Critical failure → full shutdown. Non-critical failure → restart that thread
 | LiDAR | weeder | 23000 | yes | send `<zID digits>\n` (8 chars), expect `OK\n`. Then `0x02 sRN LMDscandata 0x03`. Reply is `sRA LMDscandata …` per the datasheet, but **the simulator replies `sRN LMDscandata …`** (found by Aidan 2 Nov 2026); accept both. ASCII hex fields; preconfigured 50 Hz, 0–180°, 0.5° step → 361 `DIST1` points in mm. |
 | GNSS | weeder | 24000 | no | continuous Novatel binary. Sync `AA 44 12`, header len at byte 3 (=28), msg ID at 4 (726 = BESTUTM), body len at 8 (=80). Northing double at H+16, Easting H+24, Height H+32, CRC32 at H+80 over header+body. `GPSData.dat` in the simulator folder is this exact stream. |
 | Vehicle control | weeder | 25000 | yes | send `# <steer> <speed> <wdog> #`, steer ±40°, speed ±1 m/s, wdog alternates 0/1; freeze it to inhibit motion. |
-| Display | 127.0.0.1 | 28000 | no | MATLAB server. Send X array as bytes, sleep 10 ms, then Y array (Appendix B). **Values must be in millimetres** (Aidan's clarification to students, 17 Nov 2026: "send array<Byte>^ x and array<Byte>^ y pair as millimeters"). SM_Laser holds metres, so Display multiplies by 1000 before sending. |
+| Display | 127.0.0.1 | 28000 | no | MATLAB server. Send X array as bytes, sleep 10 ms, then Y array (Appendix B). **Values must be in millimetres**, and the provided engine draws X across the screen (−8000..8000, + right) and Y ahead (0..8000) — so Display sends X = −y, Y = x (checked in MATLAB R2025a, 17 Nov 2026; see §6) (Aidan's clarification to students, 17 Nov 2026: "send array<Byte>^ x and array<Byte>^ y pair as millimeters"). SM_Laser holds metres, so Display multiplies by 1000 before sending. |
 | GR-U01 (bonus) | weeder | 26000 | no | NMEA `$GNGGA`/`$GPGGA` text. |
 
 "weeder" = `127.0.0.1` for the simulator, `192.168.1.200` for the real robot (`WEEDER_ADDRESS` in NetworkedModule.h).
@@ -193,6 +203,18 @@ not a new requirement. Part 7 now reads, in substance:
   change, and left/right can't be checked on it. Students can't demonstrate "live" data and a
   marker can't tell live reading from a looped copy. Fix in the simulator (generate scans from the
   world, or at least advance the counters), or change the progress-check wording.
+- **Display engine frame vs "vehicle base frame" (found 17 Nov 2026).** The engine's axes are fixed at
+  X −8000..8000 (across the screen, + right) and Y 0..8000 (ahead), view [0 80]. Data sent in the
+  vehicle base frame (x forward, y left) appears rotated 90°, with everything on the vehicle's right
+  clipped off. Display therefore sends X = −y, Y = x. The spec wording should say what frame the
+  engine expects. Raised with Aidan; may explain students' odd plots.
+- **Frozen simulator LiDAR blocks crash avoidance (17 Nov 2026, by analysis; not yet run).** The
+  frozen scan has returns 0.16 m to the left (indices 272–360) and 0.79 m ahead. The 0.16 m points sit
+  inside the vehicle corridor right at the sensor, so any decent crash avoidance stops all forward
+  motion in the simulator. Students may disable their safety code to demo driving.
+- **`GPSData.dat` is synthetic.** Northing and Easting start at 0; Easting rises 0.1 per record,
+  Northing wanders a few metres either side of 0; zone 56 H, height 108.389. Correct output looks
+  like "Northing 0.100 Easting 0.100" — students may think they have a decoding bug.
 - Project pins toolset `v143`; Visual Studio 2026 on this machine has MSVC 14.51 only, so expect a
   retarget prompt (or build with `/p:PlatformToolset=v145`). Spec should mention this.
 
@@ -214,6 +236,14 @@ not a new requirement. Part 7 now reads, in substance:
   publishes limits (maximum forward speed, steering limits) rather than a yes/no flag, so it can slow
   down and ease the steering as well as stop. The fail-safe idea stays: limits start at "stopped" and
   VC stops if crash avoidance goes quiet. `progress-check` keeps the original flag (no change there).
+  Implemented design (`CrashAvoidance.cpp`, every 20 ms): predict the path as an arc of radius
+  wheelbase/tan(steer), corridor = half-width 0.30 + margin 0.10 m; clearance = distance along the arc
+  to the **second-nearest** scan point in the corridor (ignores single stray points; range 0 ignored;
+  capped at 2 m); steering limits = per side, the sharpest of 5°…40° whose path is clear ≥ 1 m
+  (left free if straight ahead is already < 1 m); speed limit on the path actually driven
+  v = √((d − 0.1·v_req − 0.3)/0.7), capped at 1 m/s (full at ~1 m, zero at 0.3 m). VC applies the limits
+  to forward motion only; reversing is never limited (no rear LiDAR). Assumed geometry (width,
+  wheelbase, LiDAR at front centre) is flagged for measurement on the real robot.
 
 ## 8. Current status
 
@@ -254,7 +284,36 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 | critical thread lost | LiDAR server killed → `ERR_CONNECTION` → TMM full shutdown 2.1 s later |
 | LiDAR absent at start | LiDAR thread exits after the barrier → TMM full shutdown at 2.3 s |
 
-**Branch `full-build`:** not created yet.
+**Branch `full-build`:** built 17 Nov 2026 from `progress-check`. All six modules implemented; builds
+0 errors (3 known lib warnings). Tested against stand-ins and the real MATLAB engine, **not yet on the
+Weeder simulator or the robot**. Summary (details and per-component walkthrough in `docs/REVIEW_GUIDE.md`):
+- **GNSS:** buffered stream, sync search `AA 44 12`, header checks (len 28, ID 726, body 80), CRC32
+  (corrected Appendix A code) over 108 bytes vs the stored CRC, prints N/E/H with both CRCs, prints
+  mismatches and discards. Non-critical; reconnects via TMM restart.
+- **Controller:** Xbox (`INPUT_TYPE = 0`); speed = (RT − LT) × 1 m/s, steering = −stickX × 40° (+ left),
+  10% deadzone, disconnected → 0/0 with a one-off message, **B button** → shutdown request (sets
+  `bit_TM`; TMM runs the normal shutdown).
+- **VC:** zID auth like the LiDAR (assumed — confirm on simulator), sends `# %.3f %.3f %d #`
+  (steer, speed, watchdog) every 50 ms, no newline; watchdog toggles each message; caps forward speed
+  and steering to crash-avoidance limits; holds the vehicle (speed 0) if those limits are > 300 ms
+  old; final stop command on exit; status line twice a second while driving.
+- **Display:** mm, engine frame (X = −y, Y = x), provided BlockCopy routine, X, 10 ms, Y, 10 Hz.
+- **CrashAvoidance (new design, see §7):** arc-path corridor, second-nearest point, 17 candidate
+  steering angles → steering limits, braking-curve speed limit, fail-safe on stale LiDAR (scan
+  counter added to `SM_Laser`).
+- **SMObjects.h:** `SM_Laser::scanNumber`; `SM_CrashAvoidance` now holds `maxForwardSpeed`,
+  `maxLeftSteer`, `maxRightSteer`, `pathClearance`, `lastUpdate` (all start at "stopped").
+- **TMM/Main:** heartbeat stopwatches restarted after the barrier; exit code 2 after a critical
+  failure. **LiDAR:** stops after 3 consecutive 1 s timeouts; prints every 100 scans.
+
+Test results (`tools/test_full_build.py`, 36/36): straight approach 2.0/0.8/0.5/0.35 m → 1.00/0.76/
+0.38/0.00 m/s; reversing allowed; side obstacle front-left + hard left → eased 40°→20° at full
+speed, hard right unaffected; mirror case on the right; blocked ahead + hard left → steering free,
+speed 0; single stray point ignored; 2 cm pole slows; disconnect → 0/0; watchdog alternates;
+display mm/frame correct; GNSS 196 OK + 32 deliberate mismatches rejected, values match the file;
+B → exit 0 with 6 threads stopped and a final stop command; display lost → exit 2 naming Display;
+GNSS dropped every 15 records → restarted, program keeps running; `q` → exit 0.1 s later.
+Real MATLAB engine (R2025a) run with a post 2 m ahead and one front-left: plot correct.
 
 ### Build notes (important)
 
@@ -278,6 +337,13 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 - **Test-harness trap:** if you run the exe from Python with `stdout=PIPE` and don't read the pipe
   continuously, the 7 KB scan print fills the pipe, `Console::Write` blocks, the LiDAR heartbeat
   stops, and TMM "correctly" declares it dead. Always drain stdout on a thread (the harness does).
+- **Full-build tests** (repo root, after building; never with the simulator or MATLAB open — ports
+  23000/24000/25000/28000 must be free):
+  `python tools/build_test_exe.py <scratch dir>` then
+  `python tools/test_full_build.py "<scratch dir>\Executables\MTRN3500 Assignment 2.exe"`.
+  To check the real MATLAB engine non-interactively, run it with `matlab -batch` from a wrapper that
+  starts a `timer` to `exportgraphics` the figure (don't probe port 28000 with a bare connect first:
+  the engine takes that as its client).
 - Scan rate against the mock is ~32/s with the 20 ms sleep in the LiDAR loop. If the real simulator
   shows ~5/s, suspect Nagle + delayed ACK on its side (the mock needed `TCP_NODELAY`).
 
@@ -285,18 +351,18 @@ Verified results (30 Oct 2026, mock server, not the simulator):
 
 1. ~~Skeleton on `main`.~~ Done.
 2. ~~`progress-check` branch.~~ Done and verified. Aidan to review it as the Week 8 marking point.
-3. `full-build` branch, branched from `progress-check` (so TMM and LiDAR carry over): Parts 3–7
-   (GNSS decode + CRC, Controller, VC command stream, Display to MATLAB, CrashAvoidance), the
-   one-page report in `docs/`, then the GR-U01 bonus. Add mock servers for GNSS (replay
-   `GPSData.dat`), VC and display to `tools/` as needed. Crash avoidance is non-critical
-   (restartable), decided by Aidan 2 Nov 2026.
+3. ~~`full-build` Parts 3–7 + report.~~ Done 17 Nov 2026 (see §8). Still to do on `full-build`:
+   (a) run against the Weeder simulator (needs Aidan's OK) to confirm the VC auth/command format,
+   the steering sign (+ = left assumed) and GNSS rate; (b) Aidan's review using
+   `docs/REVIEW_GUIDE.md`; (c) GR-U01 bonus; (d) real-robot check of crash-avoidance geometry
+   constants (`CrashAvoidance.h`) and whether the LiDAR sees the robot itself.
 4. Figure 1's "270°" label on the +X axis is still wrong in the spec; the code follows the other
    five labels (0° = right, 90° = forward, 180° = left), confirmed by the moving-post mock test.
    `STUDENT_ID` is `5481380` (z5481380, set 3 Nov 2026; was the placeholder `5555555`).
 5. ~~Aidan to run `progress-check` against the real simulator.~~ Done 2 Nov 2026, passed; re-run
    by Claude 3 Nov 2026, passed. Left/right can't be checked on the simulator (its LiDAR is frozen,
    §6); it was checked against the moving-post mock instead. Confirm once on the real robot.
-6. Low-priority robustness points for `full-build` (found in review 3 Nov 2026, not touched in
+6. ~~Low-priority robustness points~~ — all three fixed in `full-build` (17 Nov 2026). Were: (found in review 3 Nov 2026, not touched in
    `progress-check`): (a) if start-up takes over ~2 s (slow connect to the real robot), the
    heartbeat stopwatches are already stale when TMM's loop starts, which could cause a false
    critical shutdown; restart them after the barrier. (b) The exe exits with code 0 even after a
@@ -304,6 +370,12 @@ Verified results (30 Oct 2026, mock server, not the simulator):
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-17** — `full-build` (new branch from `progress-check`, home PC): Parts 3–7 implemented,
+  crash avoidance redesigned for the revised wording (graded speed + steering easing), report and
+  review guide in `docs/`, new stand-ins and a 36-check test in `tools/` (36/36 pass), real MATLAB
+  engine checked (found the display-frame issue, §6). Not yet run on the Weeder simulator. Commits are
+  local only so far (not pushed) — `gh` is not installed on the home PC.
 
 - **2026-11-17** — docs only (`progress-check` and `main`). Recorded Aidan's two spec changes: the
   revised crash-avoidance wording (Part 7 and marking item f, §5) and the display millimetre
