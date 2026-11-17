@@ -337,7 +337,16 @@ stopped, exit 0. Steering sign checked separately with a raw socket: +20° turns
 **Controller hardware:** Aidan has a PS4 controller, not an Xbox one. The provided library uses
 XInput, which a DualShock 4 does not speak natively; it needs DS4Windows (free, uses the ViGEmBus
 driver) to appear as an Xbox 360 controller. Then R2/L2 = triggers, right stick = steering, and the
-shutdown button B = Circle (○). No code change needed. Not yet tested with the real controller.
+shutdown button B = Circle (○). No code change needed.
+**Tested 17 Nov 2026 with Aidan's PS4 controller (USB):** "DS4Windows Nexus" (an unofficial fork Aidan
+downloaded first) uses a USB/IP backend (VIIPER) and refused to create the virtual Xbox controller
+because Citrix USB Monitor (`ctxusbmon.sys`) is installed. Replaced with standard DS4Windows 3.9.9
+(github.com/schmaldeo/DS4Windows, extracted to `C:\Users\aidan\DS4Windows`) + ViGEmBus 1.21 (+ HidHide),
+which works; DS4Windows must be running. Live run of the real exe against the simulator: proportional
+trigger speeds (e.g. 0.43, 0.88, −0.57 m/s), R2 blocked by crash avoidance (frozen scan), L2 reverse
+at −1.0, stick steering ±40 with intermediate values, Circle → clean shutdown, exit 0. Stick left reads
+−1.0 in XInput → steering +40 (left), so the sign is right. Not yet checked live: unplugging the
+controller mid-run (covered by the scripted test).
 
 ### Build notes (important)
 
@@ -376,8 +385,7 @@ shutdown button B = Circle (○). No code change needed. Not yet tested with the
 1. ~~Skeleton on `main`.~~ Done.
 2. ~~`progress-check` branch.~~ Done and verified. Aidan to review it as the Week 8 marking point.
 3. ~~`full-build` Parts 3–7 + report.~~ Done 17 Nov 2026 (see §8). Still to do on `full-build`:
-   (a) ~~simulator run~~ done 17 Nov 2026 (§8); (a2) test with Aidan's PS4 controller via
-   DS4Windows; (b) Aidan's review using
+   (a) ~~simulator run~~ done 17 Nov 2026 (§8); (a2) ~~PS4 controller~~ done 17 Nov 2026 (§8); (b) Aidan's review using
    `docs/REVIEW_GUIDE.md`; (c) GR-U01 bonus; (d) real-robot check of crash-avoidance geometry
    constants (`CrashAvoidance.h`) and whether the LiDAR sees the robot itself.
 4. Figure 1's "270°" label on the +X axis is still wrong in the spec; the code follows the other
@@ -394,6 +402,9 @@ shutdown button B = Circle (○). No code change needed. Not yet tested with the
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-17** — `full-build`: docs only. Live test with Aidan's PS4 controller via DS4Windows
+  3.9.9 + ViGEmBus passed (§8); setup notes added to the review guide. Still not pushed.
 
 - **2026-11-17** — `full-build` (new branch from `progress-check`, home PC): Parts 3–7 implemented,
   crash avoidance redesigned for the revised wording (graded speed + steering easing), report and

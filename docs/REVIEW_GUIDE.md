@@ -169,9 +169,13 @@ controller and the vehicle stops.
 **Settings:** `INPUT_TYPE` in `Controller.h` (0 = Xbox, 1 = keyboard). Keyboard mode has no triggers or buttons,
 so speed comes from the right-stick-Y key and the B-button shutdown can't be shown.
 
-**Using a PS4 controller:** the provided library only reads Xbox-style (XInput) controllers. Install DS4Windows
-(free) so the PS4 controller appears as an Xbox 360 controller. Then R2 = forward, L2 = reverse, right stick =
-steer, and **Circle (○) = B = shutdown**. No code change is needed.
+**Using a PS4 controller (tested 17 Nov 2026 with yours):** the provided library only reads Xbox-style (XInput)
+controllers, so DS4Windows has to be running. It makes the PS4 controller appear as an Xbox 360 controller.
+- Use standard DS4Windows 3.9.9, installed in `C:\Users\aidan\DS4Windows`, with its ViGEmBus driver. The "Nexus" variant doesn't
+  work on your PC because it clashes with Citrix.
+- The controls are R2 = forward, L2 = reverse, right stick = steer, and **Circle (○) = B = shutdown**.
+- Live result against the simulator: partial trigger presses give proportional speeds, reversing and steering
+  work, R2 is held at 0 by crash avoidance (frozen scan), and Circle shuts everything down cleanly.
 
 **Checked on the simulator:** positive steering turns the vehicle left, as the code assumes. The simulator's Steer
 gauge shows the opposite sign (+20° sent, the gauge reads −20.0, and the car turns left). Trust the motion, not
@@ -297,7 +301,8 @@ Every function returns an `error_state`, and `UGVModule::printError` turns it in
 - Weeder simulator (17 Nov 2026): logins OK, about 22 scans/s, GNSS 2 records/s with every CRC OK, reversing
   works, B shutdown clean. Forward driving is blocked by crash avoidance because of the frozen scan (question 3
   below).
-- Not yet done: the real robot, and a real controller.
+- Your PS4 controller via DS4Windows (17 Nov 2026): driving, steering and Circle-to-shutdown work live.
+- Not yet done: the real robot.
 
 Run it yourself (repo root, after building):
 ```
