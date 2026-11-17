@@ -103,6 +103,7 @@ On `full-build` also:
 ```
   docs/crash_avoidance_report.md    the one-page crash-avoidance report (student deliverable)
   docs/REVIEW_GUIDE.md              Aidan's walkthrough of the code per marking component
+  docs/ROBOT_TEST_CHECKLIST.md      what to test on the real robot (Aidan's lab visit, 18 Nov 2026)
   tools/mock_weeder.py              stand-in LiDAR (scene from a JSON file) + GNSS replay + VC logger
   tools/mock_display.py             stand-in MATLAB display (logs the X/Y arrays it receives)
   tools/build_test_exe.py           builds a test-only exe whose Controller reads inputs from a file
@@ -402,6 +403,11 @@ controller mid-run (covered by the scripted test).
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-17** — `full-build`: added `docs/ROBOT_TEST_CHECKLIST.md` for Aidan's real-robot test on
+  18 Nov 2026 (connect, LiDAR left/right and self-readings, GNSS, wheels-up driving and steering sign,
+  watchdog, crash avoidance with a tape measure, robot measurements). Results to feed back into
+  `CrashAvoidance.h` constants and §6/§8.
 
 - **2026-11-17** — `full-build`: docs only. Live test with Aidan's PS4 controller via DS4Windows
   3.9.9 + ViGEmBus passed (§8); setup notes added to the review guide. **All 17 Nov work pushed**
