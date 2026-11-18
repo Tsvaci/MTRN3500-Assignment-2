@@ -26,6 +26,9 @@ controller. A crash-avoidance thread inhibits motion near obstacles.
    **Second machine (home PC, from 3 Nov 2026):** the same folder is
    `C:\Users\aidan\Desktop\UNI\MTRN3500\Ass 2` (repo and `WeederSimulator` only; no PDFs or zip
    there). The same restriction applies.
+   **Third machine (Aidan's Mac, used 18 Nov 2026 for the robot test):** only
+   `/Users/aidan/Desktop/University/MTRN3500/Ass2` and below (it holds an extracted
+   `full-build` zip with no `.git`).
 2. **Two development branches.**
    - `progress-check` — the Week 8 progress-check deliverable (Section 9.1 of the draft). This is a
      marking point Aidan will examine, so it must stand alone and stay clean.
@@ -103,7 +106,8 @@ On `full-build` also:
 ```
   docs/crash_avoidance_report.md    the one-page crash-avoidance report (student deliverable)
   docs/REVIEW_GUIDE.md              Aidan's walkthrough of the code per marking component
-  docs/ROBOT_TEST_CHECKLIST.md      what to test on the real robot (Aidan's lab visit, 18 Nov 2026)
+  docs/ROBOT_TEST_CHECKLIST.md      what to test on the real robot, ticked with 18 Nov 2026 progress
+  docs/ROBOT_TEST_RESULTS_2026-11-18.md  lab-session notes: network setup, results, startup bug
   tools/mock_weeder.py              stand-in LiDAR (scene from a JSON file) + GNSS replay + VC logger
   tools/mock_display.py             stand-in MATLAB display (logs the X/Y arrays it receives)
   tools/build_test_exe.py           builds a test-only exe whose Controller reads inputs from a file
@@ -349,6 +353,31 @@ at −1.0, stick steering ±40 with intermediate values, Circle → clean shutdo
 −1.0 in XInput → steering +40 (left), so the sign is right. Not yet checked live: unplugging the
 controller mid-run (covered by the scripted test).
 
+**Real robot, 18 Nov 2026 (lab PC, Xbox controller; full notes in `docs/ROBOT_TEST_RESULTS_2026-11-18.md`):**
+- **Network:** join the robot's Wi-Fi (PC gets 192.168.1.18/24). The lab PC's wired port is the campus
+  network and can't reach 192.168.1.200. The robot ignores ping; test with
+  `Test-NetConnection 192.168.1.200 -Port 23000`. The lab PC's own project was an older version, so build
+  the full-build zip. Run the exe from a Command Prompt (the window closes on exit).
+- **Section 1 (connect): PASS.** All three services connect, LiDAR and VC authenticate with zID 5481380,
+  real LiDAR replies parse (361 points), crash avoidance reports data OK.
+- **Section 3 (GNSS): PASS.** All CRCs match. The robot replays the same synthetic `GPSData.dat` as the
+  simulator (Northing about 6, Easting about 25 rising 0.1 per record, height 108.389), not a live fix.
+- **Section 2 (LiDAR/display): partly done.** Plot is live and matches the printed scan (left = −X, mm).
+  Still to do with a person: left/right mounting check, 1 m tape check. **Possible self-reading:** points
+  302–356 sit at x 0.0–0.3 m, y 0.5–0.65 m (ahead-left, ~0.55–0.6 m) in every scan. These are outside the
+  straight-ahead corridor (half-width 0.40 m), so they shouldn't block straight driving, but a hard-left
+  arc sweeps through them, so they would likely ease left steering. Waiting for Aidan to say what is there.
+- **Sections 4–8:** not started (steering sign, watchdog, B/q, unplug, ground driving, crash avoidance,
+  measurements).
+- **Bug found (not fixed; discuss with Aidan first):** if the robot is unreachable, LiDAR/VC/GNSS block
+  ~20 s in the `TcpClient` constructor before the start barrier. The barrier times out at 15 s, and TMM's
+  own stopwatch (`TMM.cpp:21`, restarted only in `processSharedMemory()` in the main loop) is by then
+  over `TM_ALIVE_TIMEOUT_MS` (4 s). Controller and CrashAvoidance see "TMM stopped" and exit, and TMM
+  reports **"CRITICAL module Controller stopped responding"**, blaming the wrong module. Fix idea: keep
+  TMM's alive signal fresh while waiting at the barrier (or restart it right after), give the connect a
+  timeout shorter than the barrier (`BeginConnect` + wait), and print which module failed to connect.
+  When the network works, startup is fast and this doesn't trigger.
+
 ### Build notes (important)
 
 - Build from the command line with the toolset override, because v143 is not installed here:
@@ -388,7 +417,10 @@ controller mid-run (covered by the scripted test).
 3. ~~`full-build` Parts 3–7 + report.~~ Done 17 Nov 2026 (see §8). Still to do on `full-build`:
    (a) ~~simulator run~~ done 17 Nov 2026 (§8); (a2) ~~PS4 controller~~ done 17 Nov 2026 (§8); (b) Aidan's review using
    `docs/REVIEW_GUIDE.md`; (c) GR-U01 bonus; (d) real-robot check of crash-avoidance geometry
-   constants (`CrashAvoidance.h`) and whether the LiDAR sees the robot itself.
+   constants (`CrashAvoidance.h`) and whether the LiDAR sees the robot itself. **18 Nov 2026:**
+   sections 1 and 3 passed, 2 partly done (§8); finish 2 and do 4–8, then (e) put the measurements into
+   `CrashAvoidance.h` and handle self-readings, (f) fix the unreachable-robot startup bug (§8), both
+   with Aidan's OK. Optional: set Linker → System → SubSystem = Console so Ctrl+F5 keeps the window open.
 4. Figure 1's "270°" label on the +X axis is still wrong in the spec; the code follows the other
    five labels (0° = right, 90° = forward, 180° = left), confirmed by the moving-post mock test.
    `STUDENT_ID` is `5481380` (z5481380, set 3 Nov 2026; was the placeholder `5555555`).
@@ -403,6 +435,11 @@ controller mid-run (covered by the scripted test).
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-18** — `full-build`: docs only. Recorded the first real-robot session (§8): network method
+  (robot Wi-Fi, no ping), sections 1 and 3 pass, section 2 partly done, possible ahead-left self-reading,
+  GNSS synthetic on the robot too, and the unreachable-robot startup bug (not fixed). Added
+  `docs/ROBOT_TEST_RESULTS_2026-11-18.md`; checklist ticked and switched to the lab's Xbox controller.
 
 - **2026-11-17** — `full-build`: added `docs/ROBOT_TEST_CHECKLIST.md` for Aidan's real-robot test on
   18 Nov 2026 (connect, LiDAR left/right and self-readings, GNSS, wheels-up driving and steering sign,
