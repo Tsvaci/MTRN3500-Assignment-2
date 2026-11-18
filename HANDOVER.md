@@ -366,7 +366,8 @@ controller mid-run (covered by the scripted test).
   Still to do with a person: left/right mounting check, 1 m tape check. **Possible self-reading:** points
   302–356 sit at x 0.0–0.3 m, y 0.5–0.65 m (ahead-left, ~0.55–0.6 m) in every scan. These are outside the
   straight-ahead corridor (half-width 0.40 m), so they shouldn't block straight driving, but a hard-left
-  arc sweeps through them, so they would likely ease left steering. Waiting for Aidan to say what is there.
+  arc sweeps through them, so they would likely ease left steering. Aidan says it was most likely a person
+  or a chair beside the robot, not the robot itself. Re-check with the area cleared before ruling it out.
 - **Sections 4–8:** not started (steering sign, watchdog, B/q, unplug, ground driving, crash avoidance,
   measurements).
 - **Bug found (not fixed; discuss with Aidan first):** if the robot is unreachable, LiDAR/VC/GNSS block
@@ -440,6 +441,7 @@ controller mid-run (covered by the scripted test).
   (robot Wi-Fi, no ping), sections 1 and 3 pass, section 2 partly done, possible ahead-left self-reading,
   GNSS synthetic on the robot too, and the unreachable-robot startup bug (not fixed). Added
   `docs/ROBOT_TEST_RESULTS_2026-11-18.md`; checklist ticked and switched to the lab's Xbox controller.
+  Follow-up: Aidan thinks the ahead-left readings were a person or a chair; re-check with the area cleared.
 
 - **2026-11-17** — `full-build`: added `docs/ROBOT_TEST_CHECKLIST.md` for Aidan's real-robot test on
   18 Nov 2026 (connect, LiDAR left/right and self-readings, GNSS, wheels-up driving and steering sign,

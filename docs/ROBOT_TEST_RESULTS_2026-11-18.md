@@ -98,7 +98,8 @@ Decoding is correct. The checklist's "expect 6,2xx,xxx / 3xx,xxx" does not apply
 - **Possible self-reading:** in both scans, points ~302–356 sit at x ≈ 0.0–0.3 m ahead, y ≈ 0.5–0.65 m
   left (≈ 0.55–0.6 m range). Need Aidan to say what is physically there (robot part or a nearby object).
   If it is the robot, crash avoidance may need to ignore it (check how `CrashAvoidance.cpp` treats points
-  that close). In scan #200 only, points 196–210 were ≈ 0.2 m straight ahead (probably a person or hand).
+  that close). **Update (Aidan, after the session):** most likely a person or a chair next to the
+  robot, not the robot itself. Confirm with the area cleared. In scan #200 only, points 196–210 were ≈ 0.2 m straight ahead (probably a person or hand).
 
 ### Sections 4–8: NOT STARTED
 Next is section 4 (wheels off the ground): RT forward / LT reverse; **right stick left turns the wheels

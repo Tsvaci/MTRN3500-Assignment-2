@@ -36,9 +36,9 @@ Full notes in `docs/ROBOT_TEST_RESULTS_2026-11-18.md`.
 - [ ] **Left and right:** stand on the robot's **left**, and you appear on the **left** of the plot.
       If it's the other side, report it. This also settles the wrong "270°" label in the spec's figure.
 - [ ] **Distance:** stand 1 m in front (tape-measure it), and the plot shows about 1000 mm ahead.
-- [ ] **Self-readings:** points 302–356 consistently sit about 0.55–0.6 m away, ahead-left (x 0.0–0.3 m,
-      y 0.5–0.65 m). **What is physically there?** A part of the robot, or something nearby?
-      Self-readings found: ______
+- [ ] **Self-readings:** on 18 Nov, points 302–356 sat about 0.55–0.6 m away, ahead-left. Aidan thinks that
+      was a person or a chair, not the robot. To confirm, clear the area within 1 m and check that nothing
+      under 0.5 m shows up. Self-readings found: ______
 
 ## 3. GNSS (robot stationary): PASS
 
@@ -95,6 +95,6 @@ Crash avoidance currently uses guessed values (`CrashAvoidance.h`) for these:
 ## Bring back
 
 - [ ] Anything that behaved differently from the above
-- [ ] What the ahead-left self-readings are
+- [ ] Whether anything under 0.5 m shows up with the area cleared
 - [ ] The stopping gap and the three measurements
 - [ ] A photo of the MATLAB plot with you standing to one side of the robot
