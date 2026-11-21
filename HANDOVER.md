@@ -108,6 +108,9 @@ On `full-build` also:
   docs/REVIEW_GUIDE.md              Aidan's walkthrough of the code per marking component
   docs/ROBOT_TEST_CHECKLIST.md      what to test on the real robot, ticked with 18 Nov 2026 progress
   docs/ROBOT_TEST_RESULTS_2026-11-18.md  lab-session notes: network setup, results, startup bug
+  docs/OBSTACLE_SIM_TEST_2026-11-21.md   14 scenarios against the Python UGV Obstacle Simulator
+  tools/run_obstacle_sim_scenarios.py    drives the test exe against that simulator, headless
+  tools/summarise_obstacle_sim.py        per-scenario summary of that run
   tools/mock_weeder.py              stand-in LiDAR (scene from a JSON file) + GNSS replay + VC logger
   tools/mock_display.py             stand-in MATLAB display (logs the X/Y arrays it receives)
   tools/build_test_exe.py           builds a test-only exe whose Controller reads inputs from a file
@@ -379,6 +382,15 @@ controller mid-run (covered by the scripted test).
   timeout shorter than the barrier (`BeginConnect` + wait), and print which module failed to connect.
   When the network works, startup is fast and this doesn't trigger.
 
+**UGV Obstacle Simulator, 21 Nov 2026** (Python stand-in for the Weeder simulator with movable boxes;
+the zip lives in Aidan's Downloads, not in the repo; report in `docs/OBSTACLE_SIM_TEST_2026-11-21.md`).
+Its vehicle is 1.2 × 0.70 m, wheelbase 0.8 m, LiDAR at the front, 1.0 m ahead of the rear axle. Results:
+14 scenarios, no collision in any LiDAR-visible case, stops 0.30–0.39 m from obstacles, left/right
+symmetric, the 1 m gap is passed at full speed, no-echo zeros are ignored, pop-up boxes at 1.5 and 0.6 m
+are stopped for. Expected exceptions: a box beside the body (blind spot) is hit when turning into it, and
+preset 2/3 (box edge 0.40 m off-centre) stops straight driving because it sits on the 0.40 m safety
+corridor edge (design choice, flagged to Aidan). All 256 GNSS CRCs OK, about 32 scans/s, exit 0.
+
 ### Build notes (important)
 
 - Build from the command line with the toolset override, because v143 is not installed here:
@@ -436,6 +448,9 @@ controller mid-run (covered by the scripted test).
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-21** — `full-build`: tested against the UGV Obstacle Simulator (§8). Added the report and two
+  test scripts. No code changes.
 
 - **2026-11-18** — `full-build`: docs only. Recorded the first real-robot session (§8): network method
   (robot Wi-Fi, no ping), sections 1 and 3 pass, section 2 partly done, possible ahead-left self-reading,
