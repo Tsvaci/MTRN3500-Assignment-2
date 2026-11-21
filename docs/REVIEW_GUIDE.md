@@ -228,11 +228,11 @@ part of `VC.cpp:68`.
 | Report step | Function | Plain-language summary |
 |---|---|---|
 | Inputs, stale check | `readInputs` (CrashAvoidance.cpp:23) | Copies the scan and the driver's command. Stale if the LiDAR's scan counter hasn't changed for 200 ms |
-| Predict the path | `distanceAlongPath` (:67) | For a steering angle, the vehicle drives an arc of radius wheelbase / tan(steer). Is a point inside the vehicle-wide corridor along that arc, and how far along is it? |
-| Measure clearance | `pathClearance` (:96) | Distance to the second-nearest scan point on that path (ignores single stray points and no-echo zeros), up to 2 m |
-| Ease the steering | `computeLimits` (:141) | Checks 17 paths. Each side may steer up to the sharpest angle whose path is clear for 1 m. If straight ahead is blocked, steering is left free so the driver can steer out |
-| Limit the speed | `speedLimitFor` (:124) | Full speed with ~1 m clear, zero at 0.3 m, a braking curve in between, with extra margin at higher requested speed |
-| Publish | `publishLimits` (:172) | Writes the max forward speed, max left/right steering, clearance, and a timestamp |
+| Predict the path | `distanceAlongPath` (:69) | For a steering angle, the vehicle turns about a point level with the rear axle, radius wheelbase / tan(steer). Does the body (front edge or inner side, plus margin) sweep over the point, and how far does the vehicle travel first? Checked against a brute-force sweep of the body to within 5 mm |
+| Measure clearance | `pathClearance` (:120) | Distance to the second-nearest scan point on that path (ignores single stray points and no-echo zeros), up to 2 m |
+| Ease the steering | `computeLimits` (:165) | Checks 17 paths. Each side may steer up to the sharpest angle whose path is clear for 1 m. If straight ahead is blocked, steering is left free so the driver can steer out |
+| Limit the speed | `speedLimitFor` (:148) | Full speed with ~1 m clear, zero at 0.3 m, a braking curve in between, with extra margin at higher requested speed |
+| Publish | `publishLimits` (:196) | Writes the max forward speed, max left/right steering, clearance, and a timestamp |
 | Apply | `VehicleControl::processSharedMemory` (VC.cpp:68) | Caps the driver's command to the limits, for forward motion only. If the limits are older than 300 ms, holds the vehicle still |
 
 **Why limits rather than a yes/no flag:** the revised spec rewards slowing and steering adjustment, not just stopping.
@@ -264,8 +264,9 @@ inside a safe envelope.
   stopping margin grows with the requested speed (0.1 s reaction distance), so a faster approach starts slowing
   earlier.
 
-**Assumptions to check on the real robot:** vehicle half-width 0.30 m + 0.10 m margin, wheelbase 0.50 m, LiDAR at the
-front centre (constants at the bottom of `CrashAvoidance.h`). If the LiDAR sees part of the robot, those angles need
+**Assumptions to check on the real robot:** vehicle half-width 0.35 m + 0.10 m margin, wheelbase 0.80 m, LiDAR at the
+front centre 1.00 m ahead of the rear axle (constants at the bottom of `CrashAvoidance.h`; taken from the UGV Obstacle
+Simulator on 21 Nov 2026, were 0.30 / 0.50 / LiDAR at the turning point). If the LiDAR sees part of the robot, those angles need
 masking. See "Open questions" below about the simulator.
 
 ---

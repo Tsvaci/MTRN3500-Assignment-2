@@ -258,14 +258,15 @@ not a new requirement. Part 7 now reads, in substance:
   publishes limits (maximum forward speed, steering limits) rather than a yes/no flag, so it can slow
   down and ease the steering as well as stop. The fail-safe idea stays: limits start at "stopped" and
   VC stops if crash avoidance goes quiet. `progress-check` keeps the original flag (no change there).
-  Implemented design (`CrashAvoidance.cpp`, every 20 ms): predict the path as an arc of radius
-  wheelbase/tan(steer), corridor = half-width 0.30 + margin 0.10 m; clearance = distance along the arc
+  Implemented design (`CrashAvoidance.cpp`, every 20 ms): predict the path as an arc about a centre
+  level with the rear axle, radius wheelbase/tan(steer), swept by the front edge and inner side of the body
+  (half-width 0.35 + margin 0.10 m, LiDAR 1.0 m ahead of the rear axle; sizes from the Obstacle Simulator); clearance = distance along the arc
   to the **second-nearest** scan point in the corridor (ignores single stray points; range 0 ignored;
   capped at 2 m); steering limits = per side, the sharpest of 5°…40° whose path is clear ≥ 1 m
   (left free if straight ahead is already < 1 m); speed limit on the path actually driven
   v = √((d − 0.1·v_req − 0.3)/0.7), capped at 1 m/s (full at ~1 m, zero at 0.3 m). VC applies the limits
-  to forward motion only; reversing is never limited (no rear LiDAR). Assumed geometry (width,
-  wheelbase, LiDAR at front centre) is flagged for measurement on the real robot.
+  to forward motion only; reversing is never limited (no rear LiDAR). Geometry (width 0.70 m,
+  wheelbase 0.8 m, LiDAR at front centre) copied from the Obstacle Simulator on 21 Nov 2026; check on the real robot.
 
 ## 8. Current status
 
@@ -390,6 +391,12 @@ symmetric, the 1 m gap is passed at full speed, no-echo zeros are ignored, pop-u
 are stopped for. Expected exceptions: a box beside the body (blind spot) is hit when turning into it, and
 preset 2/3 (box edge 0.40 m off-centre) stops straight driving because it sits on the 0.40 m safety
 corridor edge (design choice, flagged to Aidan). All 256 GNSS CRCs OK, about 32 scans/s, exit 0.
+**Then (same day, Aidan's request) the crash-avoidance geometry was changed to the simulator's sizes:**
+half-width 0.35, wheelbase 0.80, new `LIDAR_AHEAD_OF_REAR_AXLE_M` = 1.00. `distanceAlongPath` now turns
+about the rear axle and checks the swept ring of the front edge and inner side (checked against a brute-force
+sweep to within 5 mm). Re-run: 36/36 (one test scene changed from a post to a wall, because a hard left now
+correctly clears a post 0.5 m ahead) and the same 14 simulator scenarios, again no visible-obstacle collision;
+hard left past the preset 2 box now goes at full speed with 0.36 m to spare instead of slowing.
 
 ### Build notes (important)
 
@@ -448,6 +455,10 @@ corridor edge (design choice, flagged to Aidan). All 256 GNSS CRCs OK, about 32 
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-21** — `full-build`: **code change.** Crash-avoidance geometry set to the Obstacle Simulator's
+  vehicle (half-width 0.35, wheelbase 0.80, LiDAR 1.00 m ahead of the rear axle) and the path model now
+  pivots about the rear axle (§7, §8). Tests 36/36 and 14 simulator scenarios re-run. Docs updated.
 
 - **2026-11-21** — `full-build`: tested against the UGV Obstacle Simulator (§8). Added the report and two
   test scripts. No code changes.

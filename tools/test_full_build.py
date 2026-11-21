@@ -161,8 +161,11 @@ c = drive("beside left", [(0.1, 0.55, 0.1)], rt=1.0, rx=-1.0)
 check("obstacle right beside the front-left corner, turning left -> eased or slowed",
       c and (c["steer"] < 40 or c["speed"] < 0.5), str(c))
 
-c = drive("blocked ahead, steer left", [(0.6, 0.0, 0.1)], rt=1.0, rx=-1.0)
-check("blocked 0.5 m ahead, turning left -> steering free, speed cut", c and c["steer"] == 40 and c["speed"] < 0.3, str(c))
+# A wall 0.5 m ahead, 1 m right to 1.6 m left. (A single post or box that close is missed by a hard
+# left turn: the vehicle pivots about its rear axle, 1 m behind the LiDAR, so the nose swings clear.)
+wall = [(0.6, -1.0 + 0.15 * k, 0.1) for k in range(18)]
+c = drive("blocked ahead, steer left", wall, rt=1.0, rx=-1.0)
+check("wall 0.5 m ahead, turning left -> steering free, speed cut", c and c["steer"] == 40 and c["speed"] < 0.3, str(c))
 
 c = drive("one stray point", [(0.4, 0.0, 0.002)], rt=1.0)
 check("single stray reading 0.4 m ahead -> ignored", c and c["speed"] == 1.0, str(c))

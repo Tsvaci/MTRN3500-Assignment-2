@@ -60,35 +60,59 @@ error_state CrashAvoidance::readInputs() {
 	return error_state::SUCCESS;
 }
 
-// The vehicle is modelled as driving along an arc set by the steering angle (radius
-// = wheelbase / tan(steer)), sweeping a corridor as wide as the vehicle plus a margin.
-// Returns how far along that arc the point is, or -1 if the vehicle would miss it.
+// The vehicle is modelled as driving along an arc set by the steering angle: it turns about a
+// centre level with the rear axle, R = wheelbase / tan(steer) to the side. Its front edge and
+// inner side (vehicle width plus a margin) sweep a ring around that centre.
+// Returns how far the vehicle travels (at the rear axle) before its body reaches the point,
+// or -1 if the vehicle would miss it.
 // Frame: x forward, y left, origin at the LiDAR (front centre). Positive steer = left.
 double CrashAvoidance::distanceAlongPath(double px, double py, double steerDeg) {
-	double corridorHalfWidth = VEHICLE_HALF_WIDTH_M + SIDE_MARGIN_M;
+	double w = VEHICLE_HALF_WIDTH_M + SIDE_MARGIN_M;
+	double a = LIDAR_AHEAD_OF_REAR_AXLE_M;
 
 	if (Math::Abs(steerDeg) < 0.5) {
-		if (px < 0.0 || Math::Abs(py) > corridorHalfWidth) {
+		if (px < 0.0 || Math::Abs(py) > w) {
 			return -1.0;
 		}
 		return px;
 	}
 
-	// Turn centre is level with the LiDAR, R to the left (R > 0) or right (R < 0).
-	double R = WHEELBASE_M / Math::Tan(steerDeg * Math::PI / 180.0);
-	double dx = px;
-	double dy = py - R;
-	double radiusOfPoint = Math::Sqrt(dx * dx + dy * dy);
-	if (Math::Abs(radiusOfPoint - Math::Abs(R)) > corridorHalfWidth) {
+	// Work as if turning left; a right turn is the mirror image (flip y).
+	double R = Math::Abs(WHEELBASE_M / Math::Tan(steerDeg * Math::PI / 180.0));
+	double y = (steerDeg > 0.0) ? py : -py;
+
+	// Turn centre at (-a, R). The ring runs from the inner side (radius R - w) out to the outer
+	// front corner.
+	double cx = px + a;
+	double cy = y - R;
+	double radius = Math::Sqrt(cx * cx + cy * cy);
+	double innerRadius = Math::Max(0.0, R - w);
+	double outerRadius = Math::Sqrt(a * a + (R + w) * (R + w));
+	if (radius < innerRadius || radius > outerRadius) {
 		return -1.0;
 	}
 
-	// Angle the vehicle turns through to reach the point, measured in its direction of travel.
-	double turnAngle = Math::Atan2(dx, -dy * Math::Sign(R));
-	if (turnAngle < 0.0) {
-		return -1.0;
+	// The part of the body that will touch the point: the front edge if it reaches that radius,
+	// otherwise the inner side.
+	double bodyX, bodyY;
+	double innerCornerRadius = Math::Sqrt(a * a + (R - w) * (R - w));
+	if (radius >= innerCornerRadius) {
+		bodyX = 0.0;
+		bodyY = R - Math::Sqrt(radius * radius - a * a);
 	}
-	return Math::Abs(R) * turnAngle;
+	else {
+		bodyX = -a + Math::Sqrt(Math::Max(0.0, radius * radius - (R - w) * (R - w)));
+		bodyY = w;
+	}
+
+	// Angle the vehicle turns (anticlockwise) to bring that body point onto the obstacle.
+	double bx = bodyX + a;
+	double by = bodyY - R;
+	double turnAngle = Math::Atan2(bx * cy - by * cx, bx * cx + by * cy);
+	if (turnAngle < 0.0) {
+		turnAngle += 2.0 * Math::PI;
+	}
+	return R * turnAngle;
 }
 
 // Free distance along the path for a given steering angle, capped at LOOKAHEAD_M.

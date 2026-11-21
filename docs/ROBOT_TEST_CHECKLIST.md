@@ -81,11 +81,11 @@ Watch the program window: "LIMITED (clear path …)" prints whenever crash avoid
 
 ## 7. Measurements to bring back
 
-Crash avoidance currently uses guessed values (`CrashAvoidance.h`) for these:
+Crash avoidance currently uses the UGV Obstacle Simulator's sizes (`CrashAvoidance.h`) for these:
 
-- [ ] Robot width, wheel to wheel at the widest point: ______ m (guessed 0.60)
-- [ ] Wheelbase, front axle to rear axle: ______ m (guessed 0.50)
-- [ ] LiDAR position: ______ m behind the front edge, centred? ______ (assumed: at the front, centred)
+- [ ] Robot width, wheel to wheel at the widest point: ______ m (currently 0.70)
+- [ ] Wheelbase, front axle to rear axle: ______ m (currently 0.80)
+- [ ] LiDAR position: ______ m behind the front edge, centred? ______ (currently: at the front, centred, 1.0 m ahead of the rear axle)
 
 ## 8. Failure handling (optional)
 

@@ -13,8 +13,10 @@ has died.
 and steering from `SM_VehicleControl`.
 
 **Method (every 20 ms).**
-1. *Predict the path.* For a steering angle δ the vehicle follows an arc of radius R = wheelbase / tan δ (a straight
-   line when δ = 0). It sweeps a corridor the width of the vehicle plus a 0.1 m margin each side.
+1. *Predict the path.* For a steering angle δ the vehicle turns about a point level with its rear axle, at radius
+   R = wheelbase / tan δ (a straight line when δ = 0). Its front edge and inner side sweep a ring around that point,
+   the width of the vehicle plus a 0.1 m margin each side. The LiDAR is 1 m ahead of the rear axle, so the nose
+   swings out on a turn, and this is included.
 2. *Measure clearance.* For each scan point inside the corridor, work out the distance along the arc to reach it.
    The clearance is the **second-nearest** such distance, so one stray reading cannot stop the vehicle. A 2 cm pole
    at 1 m still returns several points. Ranges of 0 (no echo) are ignored. Clearance is checked up to 2 m.
@@ -53,5 +55,5 @@ and steering from `SM_VehicleControl`.
 - Controller disconnected: speed and steering go to zero. On shutdown a final stop command is sent.
 
 **Limitations.** No coverage behind the vehicle. Obstacles thinner than the beam spacing at long range can be missed
-(about 9 mm at 1 m). Vehicle width and wheelbase are assumed (0.6 m and 0.5 m) and must be measured on the real
-robot. If the LiDAR sees part of the robot itself, those angles must be masked out.
+(about 9 mm at 1 m). Vehicle width 0.70 m, wheelbase 0.8 m and LiDAR 1.0 m ahead of the rear axle are taken from the
+UGV Obstacle Simulator and must be checked on the real robot. If the LiDAR sees part of the robot itself, those angles must be masked out.

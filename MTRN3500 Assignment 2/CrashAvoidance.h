@@ -42,10 +42,12 @@ private:
     double speedLimitFor(double clearance);
     void heartbeat();
 
-    // Assumed vehicle geometry - measure on the real robot.
-    literal double VEHICLE_HALF_WIDTH_M = 0.30;
+    // Vehicle geometry, matched to the UGV Obstacle Simulator (body 1.2 m x 0.70 m, wheelbase 0.8 m,
+    // LiDAR at the front centre). Re-measure on the real robot.
+    literal double VEHICLE_HALF_WIDTH_M = 0.35;
     literal double SIDE_MARGIN_M = 0.10;
-    literal double WHEELBASE_M = 0.50;
+    literal double WHEELBASE_M = 0.80;
+    literal double LIDAR_AHEAD_OF_REAR_AXLE_M = 1.00;   // The vehicle turns about a point level with the rear axle
 
     literal double CAUTION_DISTANCE_M = 1.0;      // Start slowing / easing the steering
     literal double STOP_DISTANCE_M = 0.30;        // Forward motion stops here

@@ -87,3 +87,30 @@ python tools/summarise_obstacle_sim.py <scratch>\obsim_out\run.json
 
 Interactive use: double-click `run_obstacle_sim.bat` in the simulator folder, start MATLAB `runner.m`, then the
 normal exe with the controller.
+
+## Re-run after matching the simulator's sizes (same day)
+
+At Aidan's request, `CrashAvoidance.h` now uses the simulator's vehicle:
+
+| | Was | Now |
+|---|---|---|
+| Half-width | 0.30 m | 0.35 m |
+| Wheelbase | 0.50 m | 0.80 m |
+| LiDAR | at the turning point | 1.00 m ahead of the rear axle (`LIDAR_AHEAD_OF_REAR_AXLE_M`) |
+
+The path model now turns about the rear axle and checks the area swept by the front edge and inner side.
+Checked against a brute-force sweep of the body, it agrees to within 5 mm.
+
+| # | Before | After |
+|---|---|---|
+| A1 / A3 wall, full / half throttle | stopped 0.39 / 0.34 m short | 0.40 / 0.35 m |
+| B1 / C1 box beside the path, straight | stopped 0.35 m short | stopped 0.40 m short (corridor now 0.45 m each side, box edge at 0.40 m, so still a stop) |
+| B2 / C2 hard turn into that box | slowed to 0.25 m/s, then rounded it | **turn eased (C2: 40°→20°) or left alone, full speed, rounded it with 0.36 m to spare.** The model now knows the nose swings clear |
+| D1 1 m gap | passed at full speed, 0.15 m each side | same |
+| E1 / F1 / F2 | no false stop / 0.39 m / 0.30 m | same / 0.39 m / 0.27 m |
+| G1 oblique wall | stopped 0.44 m short | 0.32 m |
+| H1 blind spot | collision | collision (unchanged, as expected) |
+
+The 36-check test also passes (36/36). One scene changed: "blocked ahead, turning left" used a 20 cm post
+0.5 m ahead. With the vehicle pivoting 1 m behind the LiDAR, a hard left really does clear that post,
+by about 4 mm at the margin, so the scene is now a wall.
