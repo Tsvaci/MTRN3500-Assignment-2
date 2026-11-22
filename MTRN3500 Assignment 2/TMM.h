@@ -49,6 +49,7 @@ private:
     error_state startThreads();
     error_state startModule(uint8_t moduleBit);   // Also used for restarts
     uint8_t checkHeartbeats();                    // Returns the bit of a dead critical module, or 0
+    uint8_t aliveModules();                       // For the status screen
     bool shutdownKeyPressed();
     static String^ moduleName(uint8_t moduleBit);
 

@@ -200,16 +200,24 @@ except Exception as e:
 
 # GNSS
 data = open(GPS_FILE, "rb").read()
-expected = [struct.unpack_from("<3d", data, i + 28 + 16) for i in range(0, 112 * 30, 112)]
+expected = [struct.unpack_from("<3d", data, i + 28 + 16) for i in range(0, len(data) - 111, 112)]
 ok_lines = [l for l in lines if l.startswith("GNSS: Northing")]
 bad_lines = [l for l in lines if "CRC MISMATCH" in l]
-check("GNSS records decoded with CRC OK", len(ok_lines) > 20, f"{len(ok_lines)} OK lines")
+# Good records are printed every 2 s (latest one), mismatches straight away.
+check("GNSS records decoded with CRC OK (printed every ~2 s)", len(ok_lines) >= 3, f"{len(ok_lines)} OK lines")
 check("GNSS corrupted records rejected (every 7th)", len(bad_lines) > 2, f"{len(bad_lines)} mismatches")
 if ok_lines:
-    print("   first GNSS lines:", *ok_lines[:2], sep="\n     ")
-    n1 = float(ok_lines[1].split()[2])
-    check("GNSS values match GPSData.dat record 2", abs(n1 - expected[1][0]) < 0.001,
-          f"printed {n1:.3f} vs file {expected[1][0]:.3f}")
+    print("   first GNSS lines:", *ok_lines[:2], sep="
+     ")
+    def matches_file(l):
+        f = l.split()
+        n, e, h = float(f[2]), float(f[4]), float(f[6])
+        return any(abs(n - a) < 0.001 and abs(e - b) < 0.001 and abs(h - c) < 0.001 for a, b, c in expected)
+    good = sum(matches_file(l) for l in ok_lines)
+    check("GNSS printed values match records in GPSData.dat", good == len(ok_lines), f"{good}/{len(ok_lines)} match")
+lidar_lines = [l for l in lines if l.startswith("LiDAR:") and "scans/s" in l]
+check("LiDAR one-line summary printed (no 361-point dump)",
+      len(lidar_lines) >= 3 and not any("LiDAR scan #" in l for l in lines), lidar_lines[0] if lidar_lines else "none")
 if bad_lines:
     print("   ", bad_lines[0])
 

@@ -1,4 +1,5 @@
 #include "LiDAR.h"
+#include "ConsoleView.h"
 
 LiDAR::LiDAR(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	SM_TM_ = SM_TM;
@@ -6,6 +7,8 @@ LiDAR::LiDAR(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	x_ = gcnew array<double>(STANDARD_LASER_LENGTH);
 	y_ = gcnew array<double>(STANDARD_LASER_LENGTH);
 	scanCount_ = 0;
+	scansAtLastPrint_ = 0;
+	printTimer_ = Stopwatch::StartNew();
 	Client = nullptr;
 	Stream = nullptr;
 	ReadData = nullptr;
@@ -194,8 +197,46 @@ error_state LiDAR::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
+// Every 2 s: scan rate and the nearest obstacle (direction from straight ahead).
 // Built as one string and written once so other threads' output can't interleave.
 void LiDAR::printScan() {
+	bool view = ConsoleView::isActive();
+	if (printTimer_->ElapsedMilliseconds < (view ? VIEW_PERIOD_MS : PRINT_PERIOD_MS)) {
+		return;
+	}
+	double seconds = printTimer_->ElapsedMilliseconds / 1000.0;
+	double scansPerSecond = (scanCount_ - scansAtLastPrint_) / seconds;
+	printTimer_->Restart();
+	scansAtLastPrint_ = scanCount_;
+
+	if (view || !PRINT_ALL_POINTS) {
+		int nearest = -1;
+		double nearestRange = 0.0;
+		for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
+			double range = Math::Sqrt(x_[i] * x_[i] + y_[i] * y_[i]);
+			if (range >= MIN_VALID_RANGE_M && (nearest < 0 || range < nearestRange)) {
+				nearest = i;
+				nearestRange = range;
+			}
+		}
+		String^ nearestText = "nothing in range";
+		ConsoleColor colour = ConsoleColor::White;
+		if (nearest >= 0) {
+			double angle = Math::Atan2(y_[nearest], x_[nearest]) * 180.0 / Math::PI;   // + left of ahead
+			String^ side = Math::Abs(angle) < 2.5 ? "ahead" : String::Format("{0:F0} deg {1}", Math::Abs(angle), angle > 0 ? "left" : "right");
+			nearestText = String::Format("nearest {0:F2} m, {1}", nearestRange, side);
+			if (nearestRange < 1.0) {
+				colour = ConsoleColor::DarkYellow;              // Within the 1 m crash-avoidance zone
+			}
+		}
+		if (view) {
+			ConsoleView::set("lidar", String::Format("{0:F0} scans/s    {1}", scansPerSecond, nearestText), colour);
+			return;
+		}
+		Console::WriteLine(String::Format("LiDAR: {0,4:F0} scans/s   {1}", scansPerSecond, nearestText));
+		return;
+	}
+
 	Text::StringBuilder^ text = gcnew Text::StringBuilder();
 	text->AppendLine("LiDAR scan #" + scanCount_ + "  (" + STANDARD_LASER_LENGTH + " points, metres, x = forward, y = left)");
 	for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
@@ -255,9 +296,7 @@ void LiDAR::threadFunction() {
 				consecutiveTimeouts = 0;
 				processSharedMemory();
 				scanCount_++;
-				if (scanCount_ % PRINT_EVERY_N_SCANS == 0) {
-					printScan();
-				}
+				printScan();
 			}
 			else {
 				printError(status);

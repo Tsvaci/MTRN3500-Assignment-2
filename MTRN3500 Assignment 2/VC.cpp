@@ -1,4 +1,5 @@
 #include "VC.h"
+#include "ConsoleView.h"
 
 VehicleControl::VehicleControl(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM_VC, SM_CrashAvoidance^ SM_CA) {
 	SM_TM_ = SM_TM;
@@ -13,6 +14,7 @@ VehicleControl::VehicleControl(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM
 	limited_ = false;
 	watchdog_ = 0;
 	statusTimer_ = Stopwatch::StartNew();
+	wasLimited_ = false;
 	Client = nullptr;
 	Stream = nullptr;
 	ReadData = nullptr;
@@ -142,15 +144,50 @@ error_state VehicleControl::communicate() {
 	return error_state::SUCCESS;
 }
 
-// Twice a second while the driver is asking for motion, show what crash avoidance changed.
+// e.g. "speed +0.73 m/s    steer 20.0 deg left"
+String^ VehicleControl::describeMotion(double speed, double steering) {
+	String^ direction = Math::Abs(steering) < 0.05 ? "straight"
+		: String::Format("{0:F1} deg {1}", Math::Abs(steering), steering > 0 ? "left" : "right");
+	return String::Format("speed {0,5:+0.00;-0.00;0.00} m/s    steer {1}", speed, direction);
+}
+
+// Live status screen: update the driving rows. Plain output: every 2 s while the driver is asking
+// for motion, show what crash avoidance changed, and straight away (at most every 0.5 s) when
+// crash avoidance starts or stops limiting.
 void VehicleControl::printStatus() {
-	if (statusTimer_->ElapsedMilliseconds < STATUS_PERIOD_MS) {
+	if (ConsoleView::isActive()) {
+		if (statusTimer_->ElapsedMilliseconds < VIEW_PERIOD_MS) {
+			return;
+		}
+		statusTimer_->Restart();
+		ConsoleView::set("asked", describeMotion(requestedSpeed_, requestedSteering_), ConsoleColor::White);
+		ConsoleView::set("sent", describeMotion(speed_, steering_), limited_ ? ConsoleColor::DarkYellow : ConsoleColor::White);
+		if (crashAvoidanceStale_) {
+			ConsoleView::set("crash", "HOLDING - crash avoidance not running, vehicle kept still", ConsoleColor::Red);
+		}
+		else if (limited_) {
+			ConsoleView::set("crash", String::Format("LIMITING - clear path {0:F2} m", pathClearance_), ConsoleColor::DarkYellow);
+		}
+		else if (pathClearance_ >= 1.99) {
+			ConsoleView::set("crash", "not limiting - path clear for 2 m+", ConsoleColor::Green);
+		}
+		else {
+			ConsoleView::set("crash", String::Format("not limiting - clear path {0:F2} m", pathClearance_), ConsoleColor::Green);
+		}
+		return;
+	}
+
+	long long sinceLast = statusTimer_->ElapsedMilliseconds;
+	bool changed = (limited_ != wasLimited_) && sinceLast >= MIN_STATUS_GAP_MS;
+	if (sinceLast < STATUS_PERIOD_MS && !changed) {
 		return;
 	}
 	if (requestedSpeed_ == 0.0 && requestedSteering_ == 0.0) {
+		wasLimited_ = false;
 		return;
 	}
 	statusTimer_->Restart();
+	wasLimited_ = limited_;
 
 	String^ note = "";
 	if (crashAvoidanceStale_) {

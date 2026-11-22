@@ -30,17 +30,21 @@ private:
     bool limited_;                         // Crash avoidance changed the command
     int watchdog_;                         // Toggles 0/1 each message
     Stopwatch^ statusTimer_;
+    bool wasLimited_;                      // limited_ at the last status line
 
     error_state authenticate();
     String^ buildCommand();
     void printStatus();
+    static String^ describeMotion(double speed, double steering);
     void heartbeat();
 
     literal int SEND_PERIOD_MS = 50;
     literal int RECEIVE_TIMEOUT_MS = 1000;
     literal int SEND_TIMEOUT_MS = 1000;
     literal int CA_STALE_MS = 300;         // Crash avoidance updates every ~20 ms
-    literal int STATUS_PERIOD_MS = 500;
+    literal int STATUS_PERIOD_MS = 2000;   // Status line while driving
+    literal int MIN_STATUS_GAP_MS = 500;   // Extra lines when limiting starts/stops, but no faster than this
+    literal int VIEW_PERIOD_MS = 200;      // Live status screen refresh of this module's rows
     literal double MAX_STEER_DEG = 40.0;
     literal double MAX_SPEED_MPS = 1.0;
 };

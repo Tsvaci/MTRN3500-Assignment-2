@@ -1,4 +1,5 @@
 #include "Controller.h"
+#include "ConsoleView.h"
 
 Controller::Controller(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM_VC) {
 	SM_TM_ = SM_TM;
@@ -23,6 +24,7 @@ error_state Controller::readController() {
 	if (!state.isConnected) {
 		speed_ = 0.0;
 		steering_ = 0.0;
+		ConsoleView::set("controller", "DISCONNECTED - speed and steering held at zero", ConsoleColor::Red);
 		if (wasConnected_) {
 			Console::WriteLine("Controller: DISCONNECTED - speed and steering set to zero.");
 		}
@@ -33,6 +35,7 @@ error_state Controller::readController() {
 		Console::WriteLine("Controller: reconnected.");
 	}
 	wasConnected_ = true;
+	ConsoleView::set("controller", "connected", ConsoleColor::Green);
 
 	double throttle;
 	if (INPUT_TYPE == 1) {

@@ -141,6 +141,7 @@
     <ClInclude Include="VC.h" />
     <ClInclude Include="Display.h" />
     <ClInclude Include="CrashAvoidance.h" />
+    <ClInclude Include="ConsoleView.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp" />
@@ -151,6 +152,7 @@
     <ClCompile Include="VC.cpp" />
     <ClCompile Include="Display.cpp" />
     <ClCompile Include="CrashAvoidance.cpp" />
+    <ClCompile Include="ConsoleView.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

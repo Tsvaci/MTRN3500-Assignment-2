@@ -27,6 +27,8 @@ private:
     unsigned long receivedCRC_;
     unsigned long calculatedCRC_;
     unsigned int recordCount_;
+    Stopwatch^ printTimer_;
+    unsigned int rejectedCount_;
 
     int findHeader();                             // Index of the first AA 44 12 in ReadData, or -1
     error_state decodeRecord(int offset);         // Check and decode the record starting at offset
@@ -41,6 +43,8 @@ private:
     literal int READ_BUFFER_SIZE = 4096;
     literal int RECEIVE_TIMEOUT_MS = 1000;
     literal int MAX_CONSECUTIVE_TIMEOUTS = 3;
+    literal int PRINT_PERIOD_MS = 2000;           // Good records: print the latest one this often
+    literal int VIEW_PERIOD_MS = 200;             // Live status screen refresh
     literal int HEADER_LENGTH = 28;
     literal int BODY_LENGTH = 80;
     literal int CRC_LENGTH = 4;

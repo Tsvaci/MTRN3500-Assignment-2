@@ -1,4 +1,5 @@
 #include "GNSS.h"
+#include "ConsoleView.h"
 
 GNSS::GNSS(SM_ThreadManagement^ SM_TM, SM_GPS^ SM_GPS) {
 	SM_TM_ = SM_TM;
@@ -10,6 +11,8 @@ GNSS::GNSS(SM_ThreadManagement^ SM_TM, SM_GPS^ SM_GPS) {
 	receivedCRC_ = 0;
 	calculatedCRC_ = 0;
 	recordCount_ = 0;
+	printTimer_ = Stopwatch::StartNew();
+	rejectedCount_ = 0;
 	Client = nullptr;
 	Stream = nullptr;
 	ReadData = nullptr;
@@ -146,8 +149,27 @@ error_state GNSS::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
+// Good records: the latest one every 2 s (the receiver sends several a second).
+// CRC mismatches: always, straight away.
 void GNSS::printPosition(bool crcOk) {
+	if (!crcOk) {
+		rejectedCount_++;
+	}
+	if (crcOk && ConsoleView::isActive()) {
+		if (printTimer_->ElapsedMilliseconds < VIEW_PERIOD_MS) {
+			return;
+		}
+		printTimer_->Restart();
+		ConsoleView::set("gnss", String::Format("Northing {0:F3}    Easting {1:F3}    Height {2:F3}", northing_, easting_, height_), ConsoleColor::White);
+		ConsoleView::set("gnsscrc", String::Format("calc {0:X8}   recv {1:X8}   OK    ({2} good, {3} rejected)",
+			calculatedCRC_, receivedCRC_, recordCount_, rejectedCount_), rejectedCount_ == 0 ? ConsoleColor::Green : ConsoleColor::DarkYellow);
+		return;
+	}
 	if (crcOk) {
+		if (printTimer_->ElapsedMilliseconds < PRINT_PERIOD_MS) {
+			return;
+		}
+		printTimer_->Restart();
 		Console::WriteLine(String::Format("GNSS: Northing {0,12:F3}  Easting {1,11:F3}  Height {2,8:F3}  CRC calc {3:X8} recv {4:X8} OK",
 			northing_, easting_, height_, calculatedCRC_, receivedCRC_));
 	}

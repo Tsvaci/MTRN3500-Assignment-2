@@ -23,19 +23,24 @@ private:
     array<double>^ x_;
     array<double>^ y_;
     unsigned int scanCount_;
+    unsigned int scansAtLastPrint_;
+    Stopwatch^ printTimer_;
 
     error_state authenticate();
     error_state requestScan();
     error_state readTelegram(String^% telegram);  // Payload between STX and ETX
     error_state parseScan(String^ telegram);
-    void printScan();
+    void printScan();                             // One-line summary (or all 361 points, see PRINT_ALL_POINTS)
     void heartbeat();
 
     literal int READ_BUFFER_SIZE = 16384;         // One reply is ~2.5 KB
     literal int RECEIVE_TIMEOUT_MS = 1000;        // Under the 2 s heartbeat timeout
     literal int SEND_TIMEOUT_MS = 1000;
     literal int SCAN_PERIOD_MS = 20;              // Sensor runs at 50 Hz
-    literal int PRINT_EVERY_N_SCANS = 100;        // Every few seconds, so GNSS output stays readable
+    literal int PRINT_PERIOD_MS = 2000;           // Plain output: slow enough to read
+    literal int VIEW_PERIOD_MS = 200;             // Live status screen refresh
+    literal bool PRINT_ALL_POINTS = false;        // true: print all 361 x,y pairs (Week 8 progress-check format)
+    literal double MIN_VALID_RANGE_M = 0.05;      // A range of 0 means no echo
     literal int MAX_CONSECUTIVE_TIMEOUTS = 3;
     literal unsigned char STX = 0x02;
     literal unsigned char ETX = 0x03;

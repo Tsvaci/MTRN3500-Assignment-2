@@ -1,4 +1,5 @@
 #include "TMM.h"
+#include "ConsoleView.h"
 #include <conio.h>
 
 ThreadManagement::ThreadManagement() {
@@ -176,6 +177,7 @@ bool ThreadManagement::shutdownKeyPressed() {
 }
 
 void ThreadManagement::shutdownModules() {
+	ConsoleView::stop();                      // Shutdown messages print as plain lines under the screen
 	Console::WriteLine("TMM: shutting down all modules...");
 
 	Monitor::Enter(SM_TM_->lockObject);
@@ -230,6 +232,7 @@ String^ ThreadManagement::moduleName(uint8_t moduleBit) {
 }
 
 void ThreadManagement::threadFunction() {
+	ConsoleView::start();                     // Live status screen (only when running in a console window)
 	Console::WriteLine("TMM: thread started.");
 
 	if (startThreads() != error_state::SUCCESS) {
@@ -244,6 +247,7 @@ void ThreadManagement::threadFunction() {
 			processSharedMemory();
 
 			uint8_t deadCriticalModule = checkHeartbeats();
+			ConsoleView::setThreads(aliveModules(), true);
 			if (deadCriticalModule != 0) {
 				Console::WriteLine("TMM: CRITICAL module " + moduleName(deadCriticalModule) + " stopped responding.");
 				criticalFailure_ = true;
@@ -267,6 +271,17 @@ void ThreadManagement::threadFunction() {
 
 	shutdownModules();
 	Console::WriteLine("TMM: thread finished.");
+}
+
+// Modules whose heartbeat is current, plus TMM itself (for the status screen).
+uint8_t ThreadManagement::aliveModules() {
+	uint8_t alive = bit_TM;
+	for each (uint8_t moduleBit in MODULE_START_ORDER) {
+		if (SM_TM_->WatchList[bitIndex(moduleBit)]->ElapsedMilliseconds <= HEARTBEAT_TIMEOUT_MS) {
+			alive |= moduleBit;
+		}
+	}
+	return alive;
 }
 
 bool ThreadManagement::endedWithCriticalFailure() {

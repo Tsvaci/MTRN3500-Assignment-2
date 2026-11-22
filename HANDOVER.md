@@ -398,6 +398,17 @@ sweep to within 5 mm). Re-run: 36/36 (one test scene changed from a post to a wa
 correctly clears a post 0.5 m ahead) and the same 14 simulator scenarios, again no visible-obstacle collision;
 hard left past the preset 2 box now goes at full speed with 0.36 m to spare instead of slowing.
 
+**Console dashboard, 22 Nov 2026 (committed locally, NOT pushed, tests NOT yet run):** Aidan found the
+scrolling output unreadable. The spec only needs the 361-point print at the progress check (§9.1); the final
+demo needs the GNSS print with both CRCs. New helper `ConsoleView.h/.cpp` (not an assigned module) redraws a
+fixed status screen 4×/s: thread status, controller, driver request vs command sent, crash-avoidance state,
+LiDAR rate and nearest point, GNSS N/E/H with both CRCs and good/rejected counts, recent events (all
+`Console::WriteLine` output is caught and shown there). With redirected output it falls back to plain lines
+every 2 s (LiDAR summary, latest GNSS record, VC status; CRC mismatches and events immediately).
+`PRINT_ALL_POINTS` in `LiDAR.h` brings back the full dump. `tools/test_full_build.py` updated for the new
+GNSS/LiDAR print rates. **To do next:** with the simulator and MATLAB closed, run the test suite, then push
+and update the review guide (it still describes the old prints).
+
 ### Build notes (important)
 
 - Build from the command line with the toolset override, because v143 is not installed here:
