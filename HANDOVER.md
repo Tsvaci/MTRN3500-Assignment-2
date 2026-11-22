@@ -384,7 +384,9 @@ controller mid-run (covered by the scripted test).
   When the network works, startup is fast and this doesn't trigger.
 
 **UGV Obstacle Simulator, 21 Nov 2026** (Python stand-in for the Weeder simulator with movable boxes;
-the zip lives in Aidan's Downloads, not in the repo; report in `docs/OBSTACLE_SIM_TEST_2026-11-21.md`).
+a copy is now in `tools/UGV_Obstacle_Simulator/`; report in `docs/OBSTACLE_SIM_TEST_2026-11-21.md`).
+Headless scenarios: `tools/run_obstacle_sim_scenarios.py`; watchable six-stage self-driving demo (start MATLAB
+`runner.m` first): `python tools/obstacle_sim_demo.py tools/UGV_Obstacle_Simulator <test exe>`.
 Its vehicle is 1.2 × 0.70 m, wheelbase 0.8 m, LiDAR at the front, 1.0 m ahead of the rear axle. Results:
 14 scenarios, no collision in any LiDAR-visible case, stops 0.30–0.39 m from obstacles, left/right
 symmetric, the 1 m gap is passed at full speed, no-echo zeros are ignored, pop-up boxes at 1.5 and 0.6 m
@@ -398,7 +400,7 @@ sweep to within 5 mm). Re-run: 36/36 (one test scene changed from a post to a wa
 correctly clears a post 0.5 m ahead) and the same 14 simulator scenarios, again no visible-obstacle collision;
 hard left past the preset 2 box now goes at full speed with 0.36 m to spare instead of slowing.
 
-**Console dashboard, 22 Nov 2026 (committed locally, NOT pushed, tests NOT yet run):** Aidan found the
+**Console dashboard, 22 Nov 2026 (pushed to `full-build` for review, tests NOT yet run):** Aidan found the
 scrolling output unreadable. The spec only needs the 361-point print at the progress check (§9.1); the final
 demo needs the GNSS print with both CRCs. New helper `ConsoleView.h/.cpp` (not an assigned module) redraws a
 fixed status screen 4×/s: thread status, controller, driver request vs command sent, crash-avoidance state,
@@ -406,8 +408,9 @@ LiDAR rate and nearest point, GNSS N/E/H with both CRCs and good/rejected counts
 `Console::WriteLine` output is caught and shown there). With redirected output it falls back to plain lines
 every 2 s (LiDAR summary, latest GNSS record, VC status; CRC mismatches and events immediately).
 `PRINT_ALL_POINTS` in `LiDAR.h` brings back the full dump. `tools/test_full_build.py` updated for the new
-GNSS/LiDAR print rates. **To do next:** with the simulator and MATLAB closed, run the test suite, then push
-and update the review guide (it still describes the old prints).
+GNSS/LiDAR print rates. Built and checked by eye in a console window against the simulator. **To do next:**
+with the simulator and MATLAB closed, rebuild the test exe and run `tools/test_full_build.py` (last 36/36 run
+was before these print changes), then update `docs/REVIEW_GUIDE.md` (it still describes the old prints).
 
 ### Build notes (important)
 
@@ -466,6 +469,11 @@ and update the review guide (it still describes the old prints).
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-22** — `full-build`: **code change, tests not yet run.** Console status dashboard
+  (`ConsoleView.h/.cpp`) and slower plain output (§8). Added the UGV Obstacle Simulator itself
+  (`tools/UGV_Obstacle_Simulator/`) and the watchable demo script `tools/obstacle_sim_demo.py`.
+  Pushed at Aidan's request for later review.
 
 - **2026-11-21** — `full-build`: **code change.** Crash-avoidance geometry set to the Obstacle Simulator's
   vehicle (half-width 0.35, wheelbase 0.80, LiDAR 1.00 m ahead of the rear axle) and the path model now
