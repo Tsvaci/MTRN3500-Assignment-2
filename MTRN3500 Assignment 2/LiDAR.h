@@ -20,15 +20,15 @@ public:
 private:
     SM_Laser^ SM_Laser_;
 
-    array<double>^ x_;
-    array<double>^ y_;
+    array<double>^ scanX_;                        // Latest scan, m forward
+    array<double>^ scanY_;                        // Latest scan, m left
     unsigned int scanCount_;
     unsigned int scansAtLastPrint_;
     Stopwatch^ printTimer_;
 
     error_state authenticate();
     error_state requestScan();
-    error_state readTelegram(String^% telegram);  // Payload between STX and ETX
+    error_state readTelegram(String^% telegram);  // One reply ("telegram"): the text between STX and ETX
     error_state parseScan(String^ telegram);
     void printScan();                             // One-line summary (or all 361 points, see PRINT_ALL_POINTS)
     void heartbeat();

@@ -18,7 +18,7 @@ GNSS::GNSS(SM_ThreadManagement^ SM_TM, SM_GPS^ SM_GPS) {
 	ReadData = nullptr;
 }
 
-// No authentication: the receiver streams records as soon as we connect.
+// Open the TCP connection. No login: the receiver streams records as soon as we connect.
 error_state GNSS::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -34,7 +34,7 @@ error_state GNSS::connect(String^ hostName, int portNumber) {
 	return error_state::SUCCESS;
 }
 
-// Records can be split across reads or arrive several at once, so bytes are kept in
+// Read the stream and decode every complete record. Records can be split across reads or arrive several at once, so bytes are kept in
 // ReadData until a whole 112-byte record is there.
 error_state GNSS::communicate() {
 	try {
@@ -54,7 +54,7 @@ error_state GNSS::communicate() {
 
 	error_state result = error_state::ERR_NO_DATA;
 	while (true) {
-		int headerIndex = findHeader();
+		int headerIndex = findRecordStart();
 		if (headerIndex < 0) {
 			discardBytes(bufferedBytes_ > 2 ? bufferedBytes_ - 2 : 0);   // Keep a possible partial sync
 			break;
@@ -80,7 +80,8 @@ error_state GNSS::communicate() {
 	return result;
 }
 
-int GNSS::findHeader() {
+// Find a record start: the sync bytes AA 44 12.
+int GNSS::findRecordStart() {
 	for (int i = 0; i + 2 < bufferedBytes_; i++) {
 		if (ReadData[i] == 0xAA && ReadData[i + 1] == 0x44 && ReadData[i + 2] == 0x12) {
 			return i;
@@ -89,7 +90,7 @@ int GNSS::findHeader() {
 	return -1;
 }
 
-// Header: byte 3 = header length, bytes 4-5 = message ID, bytes 8-9 = body length.
+// Check and decode one record. Header: byte 3 = header length, bytes 4-5 = message ID, bytes 8-9 = body length.
 // BESTUTM body: Northing, Easting, Height are doubles at 16, 24, 32. CRC32 follows the body.
 error_state GNSS::decodeRecord(int offset) {
 	int headerLength = ReadData[offset + 3];
@@ -103,8 +104,8 @@ error_state GNSS::decodeRecord(int offset) {
 	int crcIndex = offset + HEADER_LENGTH + BODY_LENGTH;
 	receivedCRC_ = BitConverter::ToUInt32(ReadData, crcIndex);
 	{
-		pin_ptr<unsigned char> record = &ReadData[offset];   // Stops the GC moving the array during the native call
-		calculatedCRC_ = CalculateBlockCRC32(HEADER_LENGTH + BODY_LENGTH, record);
+		pin_ptr<unsigned char> recordStart = &ReadData[offset];   // Stops the GC moving the array during the native call
+		calculatedCRC_ = CalculateBlockCRC32(HEADER_LENGTH + BODY_LENGTH, recordStart);
 	}
 
 	if (calculatedCRC_ != receivedCRC_) {
@@ -112,15 +113,16 @@ error_state GNSS::decodeRecord(int offset) {
 		return error_state::ERR_INVALID_DATA;
 	}
 
-	int body = offset + HEADER_LENGTH;
-	northing_ = BitConverter::ToDouble(ReadData, body + 16);
-	easting_ = BitConverter::ToDouble(ReadData, body + 24);
-	height_ = BitConverter::ToDouble(ReadData, body + 32);
+	int bodyStart = offset + HEADER_LENGTH;
+	northing_ = BitConverter::ToDouble(ReadData, bodyStart + 16);
+	easting_ = BitConverter::ToDouble(ReadData, bodyStart + 24);
+	height_ = BitConverter::ToDouble(ReadData, bodyStart + 32);
 	recordCount_++;
 	printPosition(true);
 	return error_state::SUCCESS;
 }
 
+// Drop bytes from the front of the buffer and shift the rest down.
 void GNSS::discardBytes(int count) {
 	if (count <= 0) {
 		return;
@@ -133,6 +135,7 @@ void GNSS::discardBytes(int count) {
 	bufferedBytes_ -= count;
 }
 
+// Post Northing, Easting and Height to SM_GPS.
 error_state GNSS::processSharedMemory() {
 	if (SM_GPS_ == nullptr) {
 		return error_state::ERR_SM;
@@ -149,7 +152,7 @@ error_state GNSS::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Good records: the latest one every 2 s (the receiver sends several a second).
+// Print. Good records: the latest one every 2 s (the receiver sends several a second).
 // CRC mismatches: always, straight away.
 void GNSS::printPosition(bool crcOk) {
 	if (!crcOk) {
@@ -178,6 +181,7 @@ void GNSS::printPosition(bool crcOk) {
 	}
 }
 
+// Tell TMM this thread is alive.
 void GNSS::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -188,6 +192,7 @@ void GNSS::heartbeat() {
 	}
 }
 
+// True if TMM asked this thread to stop, or TMM itself has stopped.
 bool GNSS::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -200,6 +205,7 @@ bool GNSS::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
+// Main loop: connect, then read records as they stream in.
 // Non-critical: on any failure the thread just ends, and TMM restarts it.
 void GNSS::threadFunction() {
 	Console::WriteLine("GNSS: thread started.");
@@ -251,7 +257,7 @@ void GNSS::threadFunction() {
 	Console::WriteLine("GNSS: thread shut down after " + recordCount_ + " records.");
 }
 
-// Provided CRC32 code. The spec's version leaves the else branch empty; this is the corrected form.
+// Provided CRC32 code: the CRC of one byte value. The spec's version leaves the else branch empty; this is the corrected form.
 unsigned long GNSS::CRC32Value(int i) {
 	unsigned long ulCRC = i;
 	for (int j = 8; j > 0; j--) {
@@ -263,6 +269,7 @@ unsigned long GNSS::CRC32Value(int i) {
 	return ulCRC;
 }
 
+// Provided CRC32 code: the CRC of a block of bytes.
 unsigned long GNSS::CalculateBlockCRC32(unsigned long ulCount, unsigned char* ucBuffer) {
 	unsigned long ulTemp1;
 	unsigned long ulTemp2;

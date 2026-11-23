@@ -1,6 +1,7 @@
 #include "ConsoleView.h"
 #include <SMObjects.h>
 
+// Switch the console to the live status screen, unless output is redirected.
 void ConsoleView::start() {
 	if (Console::IsOutputRedirected) {
 		return;                                  // Plain lines for logs and test scripts
@@ -49,21 +50,24 @@ void ConsoleView::stop() {
 	}
 }
 
+// True while the status screen is showing (modules then post with set() instead of printing).
 bool ConsoleView::isActive() {
 	return active_;
 }
 
+// Update one named field on the screen, e.g. "gnss".
 void ConsoleView::set(String^ field, String^ text, ConsoleColor colour) {
 	Monitor::Enter(lock_);
 	try {
-		text_[field] = text;
-		colour_[field] = colour;
+		fieldText_[field] = text;
+		fieldColour_[field] = colour;
 	}
 	finally {
 		Monitor::Exit(lock_);
 	}
 }
 
+// Update the Threads row: which threads are alive.
 void ConsoleView::setThreads(unsigned char aliveMask, bool running) {
 	Monitor::Enter(lock_);
 	try {
@@ -83,11 +87,11 @@ void ConsoleView::addChar(wchar_t c) {
 			return;
 		}
 		if (c != L'\n') {
-			partLine_->Append(c);
+			partialLine_->Append(c);
 			return;
 		}
-		String^ line = partLine_->ToString()->Trim();
-		partLine_->Clear();
+		String^ line = partialLine_->ToString()->Trim();
+		partialLine_->Clear();
 		if (line->Length == 0) {
 			return;
 		}
@@ -101,6 +105,7 @@ void ConsoleView::addChar(wchar_t c) {
 	}
 }
 
+// Redraw, 4 times a second.
 void ConsoleView::onTimer(Object^ unused) {
 	if (!Monitor::TryEnter(lock_)) {
 		return;                                  // Previous redraw still running
@@ -130,25 +135,25 @@ void ConsoleView::writeText(String^ text, ConsoleColor colour, int width) {
 void ConsoleView::writeRow(String^ label, String^ field, int width) {
 	String^ value = "waiting...";
 	ConsoleColor colour = ConsoleColor::DarkGray;
-	if (text_->ContainsKey(field)) {
-		value = text_[field];
-		colour = colour_[field];
+	if (fieldText_->ContainsKey(field)) {
+		value = fieldText_[field];
+		colour = fieldColour_[field];
 	}
 	writeText("  " + label->PadRight(14), ConsoleColor::Gray, 16);
 	writeText(value, colour, width - 16);
 	screen_->WriteLine();
 }
 
-// Caller holds lock_.
+// Draw the whole screen from the top. Caller holds lock_.
 void ConsoleView::render() {
 	int width = Math::Min(MAX_WIDTH, Console::WindowWidth - 1);
 	int height = Console::WindowHeight;
 	String^ rule = "  " + gcnew String(L'-', width - 4);
 	Console::SetCursorPosition(0, 0);
 
-	TimeSpan up = upTime_->Elapsed;
+	TimeSpan upTime = upTime_->Elapsed;
 	String^ title = "  UGV TELE-OPERATION  |  MTRN3500 Assignment 2";
-	String^ clock = String::Format("running {0:00}:{1:00}:{2:00}", (int)up.TotalHours, up.Minutes, up.Seconds);
+	String^ clock = String::Format("running {0:00}:{1:00}:{2:00}", (int)upTime.TotalHours, upTime.Minutes, upTime.Seconds);
 	writeText(title, ConsoleColor::White, width - clock->Length);
 	writeText(clock, ConsoleColor::Gray, clock->Length);
 	screen_->WriteLine();
@@ -157,18 +162,18 @@ void ConsoleView::render() {
 
 	// Threads: green = heartbeat OK, red = stopped, grey = still starting.
 	writeText("  Threads", ConsoleColor::Gray, 16);
-	array<String^>^ names = { "TMM", "LiDAR", "GNSS", "Controller", "VC", "Display", "CrashAvoid" };
-	array<unsigned char>^ bits = { bit_TM, bit_LASER, bit_GPS, bit_CONTROLLER, bit_VC, bit_DISPLAY, bit_CRASHAVOIDANCE };
-	int used = 16;
-	for (int i = 0; i < names->Length; i++) {
-		ConsoleColor c = !running_ ? ConsoleColor::DarkGray
-			: ((aliveMask_ & bits[i]) ? ConsoleColor::Green : ConsoleColor::Red);
-		String^ item = names[i] + "  ";
-		if (used + item->Length > width) break;
-		writeText(item, c, item->Length);
-		used += item->Length;
+	array<String^>^ threadNames = { "TMM", "LiDAR", "GNSS", "Controller", "VC", "Display", "CrashAvoid" };
+	array<unsigned char>^ threadBits = { bit_TM, bit_LASER, bit_GPS, bit_CONTROLLER, bit_VC, bit_DISPLAY, bit_CRASHAVOIDANCE };
+	int columnsUsed = 16;
+	for (int i = 0; i < threadNames->Length; i++) {
+		ConsoleColor colour = !running_ ? ConsoleColor::DarkGray
+			: ((aliveMask_ & threadBits[i]) ? ConsoleColor::Green : ConsoleColor::Red);
+		String^ item = threadNames[i] + "  ";
+		if (columnsUsed + item->Length > width) break;
+		writeText(item, colour, item->Length);
+		columnsUsed += item->Length;
 	}
-	writeText("", ConsoleColor::Gray, width - used);
+	writeText("", ConsoleColor::Gray, width - columnsUsed);
 	screen_->WriteLine();
 	writeText(rule, ConsoleColor::DarkGray, width);
 	screen_->WriteLine();
@@ -190,19 +195,19 @@ void ConsoleView::render() {
 	screen_->WriteLine();
 	int rowsUsed = 14;                                           // Rows above the events
 	int eventRows = Math::Max(3, Math::Min(12, height - rowsUsed - 3));   // Keep the last window row free (no scrolling)
-	int first = Math::Max(0, events_->Count - eventRows);
+	int firstEvent = Math::Max(0, events_->Count - eventRows);
 	for (int i = 0; i < eventRows; i++) {
-		int index = first + i;
+		int index = firstEvent + i;
 		if (index < events_->Count) {
-			String^ e = events_[index];
-			ConsoleColor c = ConsoleColor::Gray;
-			if (e->Contains("CRITICAL") || e->Contains("error") || e->Contains("MISMATCH") || e->Contains("could not") || e->Contains("DISCONNECTED")) {
-				c = ConsoleColor::Red;
+			String^ eventLine = events_[index];
+			ConsoleColor colour = ConsoleColor::Gray;
+			if (eventLine->Contains("CRITICAL") || eventLine->Contains("error") || eventLine->Contains("MISMATCH") || eventLine->Contains("could not") || eventLine->Contains("DISCONNECTED")) {
+				colour = ConsoleColor::Red;
 			}
-			else if (e->Contains("WARNING") || e->Contains("restarting")) {
-				c = ConsoleColor::DarkYellow;
+			else if (eventLine->Contains("WARNING") || eventLine->Contains("restarting")) {
+				colour = ConsoleColor::DarkYellow;
 			}
-			writeText("    " + e, c, width);
+			writeText("    " + eventLine, colour, width);
 		}
 		else {
 			writeText("", ConsoleColor::Gray, width);

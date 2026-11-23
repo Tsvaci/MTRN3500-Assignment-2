@@ -19,8 +19,8 @@ public:
 private:
     SM_Laser^ SM_Laser_;
 
-    array<double>^ x_;                    // mm, + to the right (display frame)
-    array<double>^ y_;                    // mm, + forward
+    array<double>^ displayX_;             // mm, + to the right (display frame)
+    array<double>^ displayY_;             // mm, + forward
 
     void sendDisplayData(array<double>^ xData, array<double>^ yData);
     void heartbeat();

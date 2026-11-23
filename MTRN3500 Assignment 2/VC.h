@@ -23,17 +23,17 @@ private:
 
     double requestedSpeed_;                // From the controller
     double requestedSteering_;
-    double speed_;                         // What is actually sent
-    double steering_;
-    double pathClearance_;
+    double sentSpeed_;                     // What is actually sent, after the limits
+    double sentSteering_;
+    double pathClearance_;                 // From crash avoidance, for the status display
     bool crashAvoidanceStale_;
-    bool limited_;                         // Crash avoidance changed the command
+    bool isLimited_;                       // Crash avoidance changed the command
     int watchdog_;                         // Toggles 0/1 each message
     Stopwatch^ statusTimer_;
-    bool wasLimited_;                      // limited_ at the last status line
+    bool wasLimited_;                      // isLimited_ at the last status line
 
     error_state authenticate();
-    String^ buildCommand();
+    String^ buildCommand();                // "# <steer> <speed> <wdog> #"
     void printStatus();
     static String^ describeMotion(double speed, double steering);
     void heartbeat();
@@ -41,7 +41,7 @@ private:
     literal int SEND_PERIOD_MS = 50;
     literal int RECEIVE_TIMEOUT_MS = 1000;
     literal int SEND_TIMEOUT_MS = 1000;
-    literal int CA_STALE_MS = 300;         // Crash avoidance updates every ~20 ms
+    literal int CRASH_AVOIDANCE_STALE_MS = 300;   // Crash avoidance updates every ~20 ms
     literal int STATUS_PERIOD_MS = 2000;   // Status line while driving
     literal int MIN_STATUS_GAP_MS = 500;   // Extra lines when limiting starts/stops, but no faster than this
     literal int VIEW_PERIOD_MS = 200;      // Live status screen refresh of this module's rows

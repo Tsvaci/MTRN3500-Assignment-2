@@ -21,24 +21,24 @@ private:
     SM_VehicleControl^ SM_VC_;
     SM_CrashAvoidance^ SM_CA_;
 
-    array<double>^ x_;
-    array<double>^ y_;
-    double speed_;                        // Driver's request
-    double steering_;
+    array<double>^ scanX_;                // Latest scan, m forward
+    array<double>^ scanY_;                // Latest scan, m left
+    double requestedSpeed_;               // Driver's request, m/s
+    double requestedSteering_;            // Driver's request, deg (+ left)
     unsigned int lastScanNumber_;
-    Stopwatch^ scanAge_;                  // Time since the scan last changed
+    Stopwatch^ timeSinceNewScan_;         // Restarted whenever a new scan arrives
     bool scanStale_;
 
-    double maxForwardSpeed_;              // Outputs
+    double maxForwardSpeed_;              // Outputs, published to SM_CrashAvoidance
     double maxLeftSteer_;
     double maxRightSteer_;
-    double pathClearance_;
+    double drivenPathClearance_;          // Free distance along the path actually being driven
 
     error_state readInputs();
     void computeLimits();
     void publishLimits();
     double pathClearance(double steerDeg);                                // Free distance along a path
-    double distanceAlongPath(double px, double py, double steerDeg);      // -1 if the point is off the path
+    double distanceAlongPath(double pointX, double pointY, double steerDeg);      // -1 if the point is off the path
     double speedLimitFor(double clearance);
     void heartbeat();
 

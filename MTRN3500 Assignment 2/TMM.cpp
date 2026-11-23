@@ -11,6 +11,7 @@ ThreadManagement::ThreadManagement() {
 	criticalFailure_ = false;
 }
 
+// Create every shared-memory object, the start barrier and one stopwatch per thread.
 error_state ThreadManagement::setupSharedMemory() {
 	try {
 		SM_TM_ = gcnew SM_ThreadManagement();
@@ -33,6 +34,7 @@ error_state ThreadManagement::setupSharedMemory() {
 	return error_state::SUCCESS;
 }
 
+// Show TMM is alive: restart its own stopwatch, which every module checks.
 error_state ThreadManagement::processSharedMemory() {
 	if (SM_TM_ == nullptr) {
 		return error_state::ERR_SM;
@@ -48,6 +50,7 @@ error_state ThreadManagement::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
+// Start the six modules in MODULE_START_ORDER, then wait at the start barrier with them.
 error_state ThreadManagement::startThreads() {
 	for each (uint8_t moduleBit in MODULE_START_ORDER) {
 		error_state result = startModule(moduleBit);
@@ -80,6 +83,7 @@ error_state ThreadManagement::startThreads() {
 	return error_state::SUCCESS;
 }
 
+// Create one module and its thread, clear its flags and start it. Also used for restarts.
 error_state ThreadManagement::startModule(uint8_t moduleBit) {
 	try {
 		Thread^ thread = nullptr;
@@ -138,8 +142,9 @@ error_state ThreadManagement::startModule(uint8_t moduleBit) {
 	return error_state::SUCCESS;
 }
 
-// Each module sets its heartbeat bit; TMM clears it and restarts that module's stopwatch.
-// A stopwatch past HEARTBEAT_TIMEOUT_MS means the module has stopped.
+// Check heartbeats: each module sets its heartbeat bit; TMM clears it and restarts that module's stopwatch.
+// A stopwatch past HEARTBEAT_TIMEOUT_MS means the module has stopped: restart it if
+// non-critical, or return its bit if critical.
 uint8_t ThreadManagement::checkHeartbeats() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -168,6 +173,7 @@ uint8_t ThreadManagement::checkHeartbeats() {
 	return 0;
 }
 
+// True if 'q' was pressed (checked without waiting).
 bool ThreadManagement::shutdownKeyPressed() {
 	if (_kbhit()) {
 		int key = _getch();
@@ -176,6 +182,7 @@ bool ThreadManagement::shutdownKeyPressed() {
 	return false;
 }
 
+// Routine shutdown: set every shutdown flag and wait for each thread to stop.
 void ThreadManagement::shutdownModules() {
 	ConsoleView::stop();                      // Shutdown messages print as plain lines under the screen
 	Console::WriteLine("TMM: shutting down all modules...");
@@ -206,6 +213,7 @@ void ThreadManagement::shutdownModules() {
 	Console::WriteLine("TMM: shutdown complete.");
 }
 
+// True if another module (the Controller's B button) asked TMM to shut down.
 bool ThreadManagement::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -218,6 +226,7 @@ bool ThreadManagement::getShutdownFlag() {
 	return shutdownRequested;
 }
 
+// Module name for messages, e.g. bit_LASER -> "LiDAR".
 String^ ThreadManagement::moduleName(uint8_t moduleBit) {
 	switch (moduleBit) {
 	case bit_TM:             return "TMM";
@@ -231,6 +240,7 @@ String^ ThreadManagement::moduleName(uint8_t moduleBit) {
 	}
 }
 
+// Main loop, every 50 ms: stay alive, check heartbeats, watch for a shutdown request.
 void ThreadManagement::threadFunction() {
 	ConsoleView::start();                     // Live status screen (only when running in a console window)
 	Console::WriteLine("TMM: thread started.");
@@ -284,6 +294,7 @@ uint8_t ThreadManagement::aliveModules() {
 	return alive;
 }
 
+// True if a critical module died, for the program's exit code.
 bool ThreadManagement::endedWithCriticalFailure() {
 	return criticalFailure_;
 }

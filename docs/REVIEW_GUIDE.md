@@ -49,27 +49,27 @@ failure restarts just that thread.
 **Where:** `TMM.cpp`, `include/SMObjects.h`, `include/UGVModule.h`.
 
 **How it works**
-- *Start-up.* `setupSharedMemory` (TMM.cpp:13) creates every shared object. `startThreads` (TMM.cpp:50) starts
+- *Start-up.* `setupSharedMemory` (TMM.cpp:15) creates every shared object. `startThreads` (TMM.cpp:54) starts
   the threads in a set order: Controller, LiDAR, CrashAvoidance, VC, Display, GNSS. Inputs come before the
   actuator, and the safety thread is running before the first drive command.
 - *Start barrier.* Every thread connects, then waits at a barrier, so they all begin together. Afterwards the TMM
   removes the barrier (restarted threads skip it) and resets every heartbeat timer, so a slow start-up isn't
   mistaken for a dead thread.
 - *Heartbeats.* Each thread sets its own bit in `SM_TM_->heartbeat` on every loop. `checkHeartbeats`
-  (TMM.cpp:142) runs every 50 ms. When it sees a bit, it clears it and restarts that thread's stopwatch. A
+  (TMM.cpp:148) runs every 50 ms. When it sees a bit, it clears it and restarts that thread's stopwatch. A
   stopwatch past 2 s means that thread has stopped.
 - *Critical vs non-critical* (`include/SMObjects.h:37`):
   - **Critical:** LiDAR, Controller, VC, Display. Losing one means a full shutdown, and the program exits with
     code 2.
   - **Non-critical:** GNSS and CrashAvoidance. Losing one means that thread is restarted.
-- *Shutdown.* The `q` key, or the controller's B button, leads to `shutdownModules` (TMM.cpp:178). It sets every
+- *Shutdown.* The `q` key, or the controller's B button, leads to `shutdownModules` (TMM.cpp:186). It sets every
   thread's shutdown bit, then waits up to 3 s for each thread to finish and reports it.
 - *TMM itself dying.* Each module also stops if the TMM's own stopwatch goes quiet for 4 s
   (`tmmHasStopped` in `include/UGVModule.h`).
 
 **Likely questions**
 - *Why is crash avoidance allowed to be non-critical?* If it stops, its limits go stale and Vehicle Control holds the
-  vehicle still (VC.cpp:68), so it is safe to restart it rather than shut down.
+  vehicle still (VC.cpp:71), so it is safe to restart it rather than shut down.
 - *Why a barrier?* Without it a fast thread (e.g. VC) could start driving before LiDAR or crash avoidance were
   ready.
 - *Why `Monitor::Enter/Exit` with try/finally?* The lock is always released, even if an exception is thrown while
@@ -85,11 +85,11 @@ vehicle is at the bottom centre, ahead is up the screen, and left is on the left
 **Where:** `Display.cpp`.
 
 **How it works**
-- `processSharedMemory` (Display.cpp:32) copies the latest scan and converts it for the display:
+- `processSharedMemory` (Display.cpp:33) copies the latest scan and converts it for the display:
   - metres to **millimetres** (× 1000)
   - our frame (x forward, y left) to the display engine's frame (X to the right, Y forward):
     **X = −y × 1000, Y = x × 1000**
-- `sendDisplayData` (Display.cpp:50) is the routine supplied with the spec. Each 361-number array is sent as its
+- `sendDisplayData` (Display.cpp:51) is the routine supplied with the spec. Each 361-number array is sent as its
   raw bytes (361 × 8 = 2888 bytes): X first, a 10 ms pause, then Y. Ten frames per second.
 
 **Why the frame swap (found in testing, 17 Nov 2026).** The provided engine has fixed axes: X from −8000 to +8000
@@ -118,14 +118,14 @@ A bad record prints `CRC MISMATCH` with both values and is thrown away.
 **How it works**
 - The receiver streams binary records continuously; there is no request and no login. A record can arrive split
   across two reads, or several can arrive at once.
-- `communicate` (GNSS.cpp:36) appends whatever arrived to a buffer, then repeatedly:
-  1. finds the sync bytes `AA 44 12` (`findHeader`)
+- `communicate` (GNSS.cpp:39) appends whatever arrived to a buffer, then repeatedly:
+  1. finds the sync bytes `AA 44 12` (`findRecordStart`)
   2. waits until a whole record (112 bytes) is there
   3. hands it to `decodeRecord`
-- `decodeRecord` (GNSS.cpp:91):
+- `decodeRecord` (GNSS.cpp:95):
   1. checks the header: length 28, message ID 726 (BESTUTM), body length 80
   2. computes the CRC32 over the 108 header+body bytes, using the spec's routine with its `else` fixed
-     (GNSS.cpp:233)
+     (GNSS.cpp:261)
   3. compares it with the 4-byte CRC that follows the body
   4. only if they match, reads Northing, Easting and Height (doubles at body offsets 16, 24 and 32)
 - Non-critical: if the connection drops, the thread ends and the TMM restarts it (tested: it reconnects and carries
@@ -150,7 +150,7 @@ controller and the vehicle stops.
 **Where:** `Controller.cpp` (input), `VC.cpp` (sending).
 
 **How it works**
-- `readController` (Controller.cpp:20):
+- `readController` (Controller.cpp:21):
   - speed = (right trigger − left trigger) × 1 m/s
   - steering = −(right stick X) × 40°. Stick right is positive, but our steering is positive to the left, hence
     the minus.
@@ -158,9 +158,9 @@ controller and the vehicle stops.
   - if `isConnected` is false, speed and steering are set to zero and a message is printed once
 - Results go into `SM_VehicleControl` every 20 ms.
 - Vehicle Control (`VC.cpp`):
-  - logs in with the zID (`authenticate`, VC.cpp:39)
+  - logs in with the zID (`authenticate`, VC.cpp:42)
   - every 50 ms reads the driver's command and the crash-avoidance limits, applies them (`processSharedMemory`,
-    VC.cpp:68), and sends `# <steer> <speed> <watchdog> #`
+    VC.cpp:71), and sends `# <steer> <speed> <watchdog> #`
   - the watchdog flips 0/1 on every message; if it stops changing, the vehicle stops by itself
   - a final stop command is sent on shutdown
   - twice a second while driving it prints what was asked and what was sent, marked `LIMITED` when crash
@@ -194,8 +194,8 @@ the gauge. The simulator also stops the car if the watchdog value stops changing
 **Demonstrator sees:** `q` in the program's window, or **B** on the controller, stops every thread. The TMM lists
 each thread as stopped, and the program exits.
 
-**Where:** `shutdownKeyPressed` (TMM.cpp:170), `requestShutdown` (Controller.cpp:76), `shutdownModules`
-(TMM.cpp:178).
+**Where:** `shutdownKeyPressed` (TMM.cpp:177), `requestShutdown` (Controller.cpp:81), `shutdownModules`
+(TMM.cpp:186).
 
 **How it works**
 - Both routes lead to the same shutdown code in the TMM.
@@ -221,7 +221,7 @@ table, fail-safes and limitations. The code follows it step for step (section 7 
 - The VC status line shows `LIMITED (clear path 0.62 m)` etc.
 
 **Where:** `CrashAvoidance.cpp`, the new `SM_CrashAvoidance` (`include/SMObjects.h:112`), and the limit-applying
-part of `VC.cpp:68`.
+part of `VC.cpp:71`.
 
 **How it works, step by step (every 20 ms)**
 
@@ -233,7 +233,7 @@ part of `VC.cpp:68`.
 | Ease the steering | `computeLimits` (:165) | Checks 17 paths. Each side may steer up to the sharpest angle whose path is clear for 1 m. If straight ahead is blocked, steering is left free so the driver can steer out |
 | Limit the speed | `speedLimitFor` (:148) | Full speed with ~1 m clear, zero at 0.3 m, a braking curve in between, with extra margin at higher requested speed |
 | Publish | `publishLimits` (:196) | Writes the max forward speed, max left/right steering, clearance, and a timestamp |
-| Apply | `VehicleControl::processSharedMemory` (VC.cpp:68) | Caps the driver's command to the limits, for forward motion only. If the limits are older than 300 ms, holds the vehicle still |
+| Apply | `VehicleControl::processSharedMemory` (VC.cpp:71) | Caps the driver's command to the limits, for forward motion only. If the limits are older than 300 ms, holds the vehicle still |
 
 **Why limits rather than a yes/no flag:** the revised spec rewards slowing and steering adjustment, not just stopping.
 Publishing limits lets Vehicle Control apply them to the driver's newest command, and keeps the driver in charge
@@ -278,15 +278,15 @@ Each item below is something a demonstrator might pull the plug on, and what the
 | Fault | What happens | Where |
 |---|---|---|
 | LiDAR / VC / Display server not running at start | Clear message; thread stops after the barrier; TMM sees no heartbeat and shuts down (critical) | each `threadFunction` |
-| LiDAR / VC / Display lost mid-run | Read/write fails → thread stops → full shutdown, exit code 2 (tested with Display) | `TMM.cpp:142` |
-| LiDAR connected but silent | Three 1 s timeouts in a row → thread stops → full shutdown | `LiDAR.cpp:232` |
-| GNSS lost | Thread ends → TMM restarts it every 2 s until it reconnects (tested) | `GNSS.cpp:182` |
-| Bad LiDAR telegram | Rejected unless it has `sRA`/`sRN LMDscandata`, a `DIST1` block, exactly 361 points and valid hex | `LiDAR.cpp:119` |
-| Bad GNSS record | Rejected unless header length, message ID, body length **and** CRC all match | `GNSS.cpp:91` |
+| LiDAR / VC / Display lost mid-run | Read/write fails → thread stops → full shutdown, exit code 2 (tested with Display) | `TMM.cpp:148` |
+| LiDAR connected but silent | Three 1 s timeouts in a row → thread stops → full shutdown | `LiDAR.cpp:313` |
+| GNSS lost | Thread ends → TMM restarts it every 2 s until it reconnects (tested) | `GNSS.cpp:210` |
+| Bad LiDAR telegram | Rejected unless it has `sRA`/`sRN LMDscandata`, a `DIST1` block, exactly 361 points and valid hex | `LiDAR.cpp:123` |
+| Bad GNSS record | Rejected unless header length, message ID, body length **and** CRC all match | `GNSS.cpp:95` |
 | Login refused (wrong zID) | `ERR_AUTHENTICATION` printed with the server's reply | `authenticate` in LiDAR/VC |
-| Controller unplugged | Speed and steering zero, message printed once, "reconnected" when back | `Controller.cpp:20` |
-| Crash avoidance thread dies | VC holds the vehicle; TMM restarts crash avoidance | `VC.cpp:68` |
-| Program shutting down | VC sends a final stop command before closing | `VC.cpp:188` |
+| Controller unplugged | Speed and steering zero, message printed once, "reconnected" when back | `Controller.cpp:21` |
+| Crash avoidance thread dies | VC holds the vehicle; TMM restarts crash avoidance | `VC.cpp:71` |
+| Program shutting down | VC sends a final stop command before closing | `VC.cpp:258` |
 
 Every function returns an `error_state`, and `UGVModule::printError` turns it into a readable message.
 

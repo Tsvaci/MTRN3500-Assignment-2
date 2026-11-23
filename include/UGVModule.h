@@ -104,6 +104,7 @@ ref class UGVModule abstract
 			}
 		}
 
+		// True if TMM's alive stopwatch has gone quiet for over TM_ALIVE_TIMEOUT_MS.
 		bool tmmHasStopped()
 		{
 			bool stopped = false;

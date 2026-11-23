@@ -16,7 +16,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.abspath(sys.argv[1])
 MSBUILD = r"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe"
 
-ORIGINAL = "\tcontrollerState state = controller_->GetState();"
+ORIGINAL = "\tcontrollerState state = controllerInterface_->GetState();"
 PATCH = r"""	controllerState state = {};
 	try {
 		array<String^>^ f = IO::File::ReadAllText(Environment::GetEnvironmentVariable("MTRN_TEST_INPUT"))->Trim()->Split(' ');

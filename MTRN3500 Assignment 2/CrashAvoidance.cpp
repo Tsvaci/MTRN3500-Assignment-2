@@ -5,21 +5,21 @@ CrashAvoidance::CrashAvoidance(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser, S
 	SM_Laser_ = SM_Laser;
 	SM_VC_ = SM_VC;
 	SM_CA_ = SM_CA;
-	x_ = gcnew array<double>(STANDARD_LASER_LENGTH);
-	y_ = gcnew array<double>(STANDARD_LASER_LENGTH);
-	speed_ = 0.0;
-	steering_ = 0.0;
+	scanX_ = gcnew array<double>(STANDARD_LASER_LENGTH);
+	scanY_ = gcnew array<double>(STANDARD_LASER_LENGTH);
+	requestedSpeed_ = 0.0;
+	requestedSteering_ = 0.0;
 	lastScanNumber_ = 0;
-	scanAge_ = Stopwatch::StartNew();
+	timeSinceNewScan_ = Stopwatch::StartNew();
 	scanStale_ = true;
 	maxForwardSpeed_ = 0.0;
 	maxLeftSteer_ = 0.0;
 	maxRightSteer_ = 0.0;
-	pathClearance_ = 0.0;
+	drivenPathClearance_ = 0.0;
 }
 
-// Copies the latest scan and the driver's command. A scan counts as stale if no new one has
-// arrived for SCAN_STALE_MS (or none has arrived yet).
+// Read inputs: copy the scan and the driver's command; the scan is stale if its counter
+// hasn't changed for SCAN_STALE_MS (or no scan has arrived yet).
 error_state CrashAvoidance::readInputs() {
 	if (SM_Laser_ == nullptr || SM_VC_ == nullptr || SM_CA_ == nullptr) {
 		return error_state::ERR_SM;
@@ -29,8 +29,8 @@ error_state CrashAvoidance::readInputs() {
 	Monitor::Enter(SM_Laser_->lockObject);
 	try {
 		scanNumber = SM_Laser_->scanNumber;
-		Array::Copy(SM_Laser_->x, x_, STANDARD_LASER_LENGTH);
-		Array::Copy(SM_Laser_->y, y_, STANDARD_LASER_LENGTH);
+		Array::Copy(SM_Laser_->x, scanX_, STANDARD_LASER_LENGTH);
+		Array::Copy(SM_Laser_->y, scanY_, STANDARD_LASER_LENGTH);
 	}
 	finally {
 		Monitor::Exit(SM_Laser_->lockObject);
@@ -38,8 +38,8 @@ error_state CrashAvoidance::readInputs() {
 
 	Monitor::Enter(SM_VC_->lockObject);
 	try {
-		speed_ = SM_VC_->Speed;
-		steering_ = SM_VC_->Steering;
+		requestedSpeed_ = SM_VC_->Speed;
+		requestedSteering_ = SM_VC_->Steering;
 	}
 	finally {
 		Monitor::Exit(SM_VC_->lockObject);
@@ -47,9 +47,9 @@ error_state CrashAvoidance::readInputs() {
 
 	if (scanNumber != lastScanNumber_) {
 		lastScanNumber_ = scanNumber;
-		scanAge_->Restart();
+		timeSinceNewScan_->Restart();
 	}
-	bool stale = (scanNumber == 0) || (scanAge_->ElapsedMilliseconds > SCAN_STALE_MS);
+	bool stale = (scanNumber == 0) || (timeSinceNewScan_->ElapsedMilliseconds > SCAN_STALE_MS);
 	if (stale && !scanStale_) {
 		Console::WriteLine("CrashAvoidance: LiDAR data stale - forward motion stopped.");
 	}
@@ -60,114 +60,112 @@ error_state CrashAvoidance::readInputs() {
 	return error_state::SUCCESS;
 }
 
-// The vehicle is modelled as driving along an arc set by the steering angle: it turns about a
-// centre level with the rear axle, R = wheelbase / tan(steer) to the side. Its front edge and
-// inner side (vehicle width plus a margin) sweep a ring around that centre.
-// Returns how far the vehicle travels (at the rear axle) before its body reaches the point,
-// or -1 if the vehicle would miss it.
+// Predict the path: how far the vehicle travels (at the rear axle) before its body reaches the
+// point, or -1 if it would miss it.
+// Straight: a corridor of half-width + margin each side. Turning: the vehicle circles a centre
+// level with the rear axle, turn radius = wheelbase / tan(steer), and its front edge and inner
+// side sweep a ring around that centre.
 // Frame: x forward, y left, origin at the LiDAR (front centre). Positive steer = left.
-double CrashAvoidance::distanceAlongPath(double px, double py, double steerDeg) {
-	double w = VEHICLE_HALF_WIDTH_M + SIDE_MARGIN_M;
-	double a = LIDAR_AHEAD_OF_REAR_AXLE_M;
+double CrashAvoidance::distanceAlongPath(double pointX, double pointY, double steerDeg) {
+	double halfWidth = VEHICLE_HALF_WIDTH_M + SIDE_MARGIN_M;
+	double lidarToRearAxle = LIDAR_AHEAD_OF_REAR_AXLE_M;
 
 	if (Math::Abs(steerDeg) < 0.5) {
-		if (px < 0.0 || Math::Abs(py) > w) {
+		if (pointX < 0.0 || Math::Abs(pointY) > halfWidth) {
 			return -1.0;
 		}
-		return px;
+		return pointX;
 	}
 
 	// Work as if turning left; a right turn is the mirror image (flip y).
-	double R = Math::Abs(WHEELBASE_M / Math::Tan(steerDeg * Math::PI / 180.0));
-	double y = (steerDeg > 0.0) ? py : -py;
+	double turnRadius = Math::Abs(WHEELBASE_M / Math::Tan(steerDeg * Math::PI / 180.0));
+	double mirroredY = (steerDeg > 0.0) ? pointY : -pointY;
 
-	// Turn centre at (-a, R). The ring runs from the inner side (radius R - w) out to the outer
-	// front corner.
-	double cx = px + a;
-	double cy = y - R;
-	double radius = Math::Sqrt(cx * cx + cy * cy);
-	double innerRadius = Math::Max(0.0, R - w);
-	double outerRadius = Math::Sqrt(a * a + (R + w) * (R + w));
-	if (radius < innerRadius || radius > outerRadius) {
+	// Turn centre at (-lidarToRearAxle, turnRadius). The ring runs from the inner side
+	// (radius turnRadius - halfWidth) out to the outer front corner.
+	double pointFromCentreX = pointX + lidarToRearAxle;
+	double pointFromCentreY = mirroredY - turnRadius;
+	double pointRadius = Math::Sqrt(pointFromCentreX * pointFromCentreX + pointFromCentreY * pointFromCentreY);
+	double innerRadius = Math::Max(0.0, turnRadius - halfWidth);
+	double outerRadius = Math::Sqrt(lidarToRearAxle * lidarToRearAxle + (turnRadius + halfWidth) * (turnRadius + halfWidth));
+	if (pointRadius < innerRadius || pointRadius > outerRadius) {
 		return -1.0;
 	}
 
 	// The part of the body that will touch the point: the front edge if it reaches that radius,
 	// otherwise the inner side.
-	double bodyX, bodyY;
-	double innerCornerRadius = Math::Sqrt(a * a + (R - w) * (R - w));
-	if (radius >= innerCornerRadius) {
-		bodyX = 0.0;
-		bodyY = R - Math::Sqrt(radius * radius - a * a);
+	double contactX, contactY;
+	double innerCornerRadius = Math::Sqrt(lidarToRearAxle * lidarToRearAxle + (turnRadius - halfWidth) * (turnRadius - halfWidth));
+	if (pointRadius >= innerCornerRadius) {
+		contactX = 0.0;
+		contactY = turnRadius - Math::Sqrt(pointRadius * pointRadius - lidarToRearAxle * lidarToRearAxle);
 	}
 	else {
-		bodyX = -a + Math::Sqrt(Math::Max(0.0, radius * radius - (R - w) * (R - w)));
-		bodyY = w;
+		contactX = -lidarToRearAxle + Math::Sqrt(Math::Max(0.0, pointRadius * pointRadius - (turnRadius - halfWidth) * (turnRadius - halfWidth)));
+		contactY = halfWidth;
 	}
 
 	// Angle the vehicle turns (anticlockwise) to bring that body point onto the obstacle.
-	double bx = bodyX + a;
-	double by = bodyY - R;
-	double turnAngle = Math::Atan2(bx * cy - by * cx, bx * cx + by * cy);
+	double contactFromCentreX = contactX + lidarToRearAxle;
+	double contactFromCentreY = contactY - turnRadius;
+	double turnAngle = Math::Atan2(contactFromCentreX * pointFromCentreY - contactFromCentreY * pointFromCentreX,
+		contactFromCentreX * pointFromCentreX + contactFromCentreY * pointFromCentreY);
 	if (turnAngle < 0.0) {
 		turnAngle += 2.0 * Math::PI;
 	}
-	return R * turnAngle;
+	return turnRadius * turnAngle;
 }
 
-// Free distance along the path for a given steering angle, capped at LOOKAHEAD_M.
-// Uses the second-nearest point on the path so a single stray reading can't stop the vehicle.
+// Measure clearance: free distance along the path for a steering angle, capped at LOOKAHEAD_M.
+// Uses the second-nearest point so a single stray reading can't stop the vehicle.
 double CrashAvoidance::pathClearance(double steerDeg) {
 	double nearest = LOOKAHEAD_M;
 	double secondNearest = LOOKAHEAD_M;
 
 	for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
-		double range = Math::Sqrt(x_[i] * x_[i] + y_[i] * y_[i]);
+		double range = Math::Sqrt(scanX_[i] * scanX_[i] + scanY_[i] * scanY_[i]);
 		if (range < MIN_VALID_RANGE_M) {
 			continue;                                      // No echo
 		}
-		double s = distanceAlongPath(x_[i], y_[i], steerDeg);
-		if (s < 0.0) {
-			continue;
+		double distance = distanceAlongPath(scanX_[i], scanY_[i], steerDeg);
+		if (distance < 0.0) {
+			continue;                                      // Not on this path
 		}
-		if (s < nearest) {
+		if (distance < nearest) {
 			secondNearest = nearest;
-			nearest = s;
+			nearest = distance;
 		}
-		else if (s < secondNearest) {
-			secondNearest = s;
+		else if (distance < secondNearest) {
+			secondNearest = distance;
 		}
 	}
 	return secondNearest;
 }
 
-// Full speed beyond CAUTION_DISTANCE_M, zero at STOP_DISTANCE_M, and in between the speed from
-// which the vehicle can still brake evenly to a halt at the stop distance (v^2 proportional to
-// distance left). The faster the driver is asking to go, the more distance is set aside for the
-// reaction time, so the vehicle reacts earlier at higher speed.
+// Limit speed: full speed beyond CAUTION_DISTANCE_M, zero at STOP_DISTANCE_M, and an even
+// braking curve in between (v^2 proportional to distance left). Faster requests set aside
+// more reaction distance, so the vehicle starts slowing earlier.
 double CrashAvoidance::speedLimitFor(double clearance) {
-	double reactionDistance = Math::Max(0.0, speed_) * REACTION_TIME_S;
-	double usable = clearance - reactionDistance - STOP_DISTANCE_M;
-	if (usable <= 0.0) {
+	double reactionDistance = Math::Max(0.0, requestedSpeed_) * REACTION_TIME_S;
+	double brakingDistance = clearance - reactionDistance - STOP_DISTANCE_M;
+	if (brakingDistance <= 0.0) {
 		return 0.0;
 	}
-	double fraction = usable / (CAUTION_DISTANCE_M - STOP_DISTANCE_M);
-	return MAX_SPEED_MPS * Math::Min(1.0, Math::Sqrt(fraction));
+	double fractionOfSlowingZone = brakingDistance / (CAUTION_DISTANCE_M - STOP_DISTANCE_M);
+	return MAX_SPEED_MPS * Math::Min(1.0, Math::Sqrt(fractionOfSlowingZone));
 }
 
-// 1. Steering limits: starting from straight ahead, allow each side up to the sharpest angle
-//    (in 5 deg steps) whose path is clear for CAUTION_DISTANCE_M. Turning further would take
-//    the vehicle into something within 1 m, so the turn is eased back to that angle.
-//    If straight ahead is already blocked, steering is not limited: steering away may be the
-//    way out, and step 2 still limits the speed on whatever path is chosen.
-// 2. Speed limit: from the clear distance along the path the vehicle will actually take
-//    (the driver's steering after step 1).
+// Ease steering, then limit speed.
+// 1. Steering: if straight ahead is clear for CAUTION_DISTANCE_M, each side may steer up to the
+//    sharpest angle (5 deg steps) whose path is also clear that far. If straight ahead is
+//    blocked, steering is left free so the driver can steer out.
+// 2. Speed: from the clearance along the path the vehicle will actually take.
 void CrashAvoidance::computeLimits() {
 	if (scanStale_) {
 		maxForwardSpeed_ = 0.0;
 		maxLeftSteer_ = 0.0;
 		maxRightSteer_ = 0.0;
-		pathClearance_ = 0.0;
+		drivenPathClearance_ = 0.0;
 		return;
 	}
 
@@ -188,18 +186,19 @@ void CrashAvoidance::computeLimits() {
 		maxRightSteer_ = MAX_STEER_DEG;
 	}
 
-	double steerToCheck = Math::Max(-maxRightSteer_, Math::Min(maxLeftSteer_, steering_));
-	pathClearance_ = pathClearance(steerToCheck);
-	maxForwardSpeed_ = speedLimitFor(pathClearance_);
+	double steeringAfterLimits = Math::Max(-maxRightSteer_, Math::Min(maxLeftSteer_, requestedSteering_));
+	drivenPathClearance_ = pathClearance(steeringAfterLimits);
+	maxForwardSpeed_ = speedLimitFor(drivenPathClearance_);
 }
 
+// Publish: write the limits and a timestamp to SM_CrashAvoidance for VC.
 void CrashAvoidance::publishLimits() {
 	Monitor::Enter(SM_CA_->lockObject);
 	try {
 		SM_CA_->maxForwardSpeed = maxForwardSpeed_;
 		SM_CA_->maxLeftSteer = maxLeftSteer_;
 		SM_CA_->maxRightSteer = maxRightSteer_;
-		SM_CA_->pathClearance = pathClearance_;
+		SM_CA_->pathClearance = drivenPathClearance_;
 		SM_CA_->lastUpdate->Restart();
 	}
 	finally {
@@ -207,6 +206,7 @@ void CrashAvoidance::publishLimits() {
 	}
 }
 
+// One cycle: read inputs, work out the limits, publish them.
 error_state CrashAvoidance::processSharedMemory() {
 	error_state result = readInputs();
 	if (result != error_state::SUCCESS) {
@@ -217,6 +217,7 @@ error_state CrashAvoidance::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
+// Tell TMM this thread is alive.
 void CrashAvoidance::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -227,6 +228,7 @@ void CrashAvoidance::heartbeat() {
 	}
 }
 
+// True if TMM asked this thread to stop, or TMM itself has stopped.
 bool CrashAvoidance::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -239,7 +241,8 @@ bool CrashAvoidance::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
-// Non-critical: if this thread dies, its limits go stale, VC holds the vehicle, and TMM restarts it.
+// Main loop, every 20 ms. Non-critical: if this thread dies, its limits go stale, VC holds the
+// vehicle, and TMM restarts it.
 void CrashAvoidance::threadFunction() {
 	Console::WriteLine("CrashAvoidance: thread started.");
 

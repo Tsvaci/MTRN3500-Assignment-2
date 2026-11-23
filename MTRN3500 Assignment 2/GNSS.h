@@ -30,9 +30,9 @@ private:
     Stopwatch^ printTimer_;
     unsigned int rejectedCount_;
 
-    int findHeader();                             // Index of the first AA 44 12 in ReadData, or -1
+    int findRecordStart();                        // Index of the first AA 44 12 sync bytes in ReadData, or -1
     error_state decodeRecord(int offset);         // Check and decode the record starting at offset
-    void discardBytes(int count);
+    void discardBytes(int count);                 // Drop bytes from the front of ReadData
     void printPosition(bool crcOk);
     void heartbeat();
 

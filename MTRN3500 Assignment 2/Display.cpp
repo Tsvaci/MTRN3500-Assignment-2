@@ -3,13 +3,14 @@
 Display::Display(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	SM_TM_ = SM_TM;
 	SM_Laser_ = SM_Laser;
-	x_ = gcnew array<double>(STANDARD_LASER_LENGTH);
-	y_ = gcnew array<double>(STANDARD_LASER_LENGTH);
+	displayX_ = gcnew array<double>(STANDARD_LASER_LENGTH);
+	displayY_ = gcnew array<double>(STANDARD_LASER_LENGTH);
 	Client = nullptr;
 	Stream = nullptr;
 	ReadData = nullptr;
 }
 
+// Open the TCP connection to the MATLAB display engine.
 error_state Display::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -26,7 +27,7 @@ error_state Display::connect(String^ hostName, int portNumber) {
 	return error_state::SUCCESS;
 }
 
-// SM_Laser is in metres, x forward, y left. The display engine wants millimetres and draws
+// Copy the latest scan and convert it. SM_Laser is in metres, x forward, y left. The display engine wants millimetres and draws
 // its X array across the screen (+ to the right) and its Y array as distance ahead, so
 // display X = -y (right) and display Y = x (forward).
 error_state Display::processSharedMemory() {
@@ -36,8 +37,8 @@ error_state Display::processSharedMemory() {
 	Monitor::Enter(SM_Laser_->lockObject);
 	try {
 		for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
-			x_[i] = -SM_Laser_->y[i] * 1000.0;
-			y_[i] = SM_Laser_->x[i] * 1000.0;
+			displayX_[i] = -SM_Laser_->y[i] * 1000.0;
+			displayY_[i] = SM_Laser_->x[i] * 1000.0;
 		}
 	}
 	finally {
@@ -58,9 +59,10 @@ void Display::sendDisplayData(array<double>^ xData, array<double>^ yData) {
 	Stream->Write(dataY, 0, dataY->Length);
 }
 
+// Send the latest scan to MATLAB.
 error_state Display::communicate() {
 	try {
-		sendDisplayData(x_, y_);
+		sendDisplayData(displayX_, displayY_);
 	}
 	catch (Exception^ e) {
 		Console::WriteLine("Display: send failed - " + e->Message);
@@ -69,6 +71,7 @@ error_state Display::communicate() {
 	return error_state::SUCCESS;
 }
 
+// Tell TMM this thread is alive.
 void Display::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -79,6 +82,7 @@ void Display::heartbeat() {
 	}
 }
 
+// True if TMM asked this thread to stop, or TMM itself has stopped.
 bool Display::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -91,6 +95,7 @@ bool Display::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
+// Main loop: connect, then send the scan every 100 ms. Critical.
 void Display::threadFunction() {
 	Console::WriteLine("Display: thread started.");
 

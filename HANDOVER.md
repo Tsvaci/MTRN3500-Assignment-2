@@ -376,7 +376,7 @@ controller mid-run (covered by the scripted test).
   measurements).
 - **Bug found (not fixed; discuss with Aidan first):** if the robot is unreachable, LiDAR/VC/GNSS block
   ~20 s in the `TcpClient` constructor before the start barrier. The barrier times out at 15 s, and TMM's
-  own stopwatch (`TMM.cpp:21`, restarted only in `processSharedMemory()` in the main loop) is by then
+  own stopwatch (`TMM.cpp:23`, restarted only in `processSharedMemory()` in the main loop) is by then
   over `TM_ALIVE_TIMEOUT_MS` (4 s). Controller and CrashAvoidance see "TMM stopped" and exit, and TMM
   reports **"CRITICAL module Controller stopped responding"**, blaming the wrong module. Fix idea: keep
   TMM's alive signal fresh while waiting at the barrier (or restart it right after), give the connect a
@@ -411,6 +411,8 @@ every 2 s (LiDAR summary, latest GNSS record, VC status; CRC mismatches and even
 GNSS/LiDAR print rates. Built and checked by eye in a console window against the simulator. **To do next:**
 with the simulator and MATLAB closed, rebuild the test exe and run `tools/test_full_build.py` (last 36/36 run
 was before these print changes), then update `docs/REVIEW_GUIDE.md` (it still describes the old prints).
+**Done 23 Nov 2026:** the full test now passes 37/37 with the dashboard in place (see push log). The
+review guide's line numbers are updated; its description of the prints is still the old one.
 
 ### Build notes (important)
 
@@ -469,6 +471,20 @@ was before these print changes), then update `docs/REVIEW_GUIDE.md` (it still de
    timeouts while the thread still heartbeats, so TMM never notices; count consecutive timeouts.
 
 ## 10. Push log (newest first)
+
+- **2026-11-23** — `full-build`: **readability pass, no behaviour change** (Aidan's request). Clearer names
+  where a first-time reader would stumble: crash avoidance's geometry letters (`w`, `a`, `R`, `cx`, `bx`...)
+  now `halfWidth`, `lidarToRearAxle`, `turnRadius`, `pointFromCentreX`, `contactFromCentreX`...; scan arrays
+  `x_`/`y_` are `scanX_`/`scanY_` (LiDAR, CrashAvoidance) and `displayX_`/`displayY_` (Display); CA's
+  `speed_`/`steering_` are `requestedSpeed_`/`requestedSteering_` and `pathClearance_` (same name as the
+  function) is `drivenPathClearance_`; VC's `speed_`/`steering_`/`limited_` are `sentSpeed_`/`sentSteering_`/
+  `isLimited_`, `CA_STALE_MS` is `CRASH_AVOIDANCE_STALE_MS`; Controller's `controller_` is
+  `controllerInterface_`; GNSS `findHeader` is `findRecordStart`; ConsoleView fields/locals spelled out.
+  Spec/starter names untouched. Every main function now has a one-line purpose comment worded like the
+  viva guide artifact ("Predict the path", "Limit speed"...). Builds 0 errors (3 known lib warnings).
+  `tools/test_full_build.py` 37/37 (first run since the 22 Nov dashboard; fixed a broken string literal in it
+  and the `controllerInterface_` name in `build_test_exe.py`). Line references in `docs/REVIEW_GUIDE.md` and
+  the viva guide artifact updated. `STUDENT_ID` 5481380 confirmed on `full-build` and `progress-check`.
 
 - **2026-11-22** — `full-build`: **code change, tests not yet run.** Console status dashboard
   (`ConsoleView.h/.cpp`) and slower plain output (§8). Added the UGV Obstacle Simulator itself

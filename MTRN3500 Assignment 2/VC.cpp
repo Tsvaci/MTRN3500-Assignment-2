@@ -7,11 +7,11 @@ VehicleControl::VehicleControl(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM
 	SM_CA_ = SM_CA;
 	requestedSpeed_ = 0.0;
 	requestedSteering_ = 0.0;
-	speed_ = 0.0;
-	steering_ = 0.0;
+	sentSpeed_ = 0.0;
+	sentSteering_ = 0.0;
 	pathClearance_ = 0.0;
 	crashAvoidanceStale_ = true;
-	limited_ = false;
+	isLimited_ = false;
 	watchdog_ = 0;
 	statusTimer_ = Stopwatch::StartNew();
 	wasLimited_ = false;
@@ -20,6 +20,7 @@ VehicleControl::VehicleControl(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM
 	ReadData = nullptr;
 }
 
+// Open the TCP connection (1 s send/receive limits), then log in.
 error_state VehicleControl::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -37,7 +38,7 @@ error_state VehicleControl::connect(String^ hostName, int portNumber) {
 	return authenticate();
 }
 
-// Same as the LiDAR: send "<zID>\n", expect "OK".
+// Log in, same as the LiDAR: send "<zID>\n", expect "OK".
 error_state VehicleControl::authenticate() {
 	try {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes(STUDENT_ID "\n");
@@ -64,7 +65,7 @@ error_state VehicleControl::authenticate() {
 	return error_state::SUCCESS;
 }
 
-// Reads the driver's command and the crash-avoidance limits, then works out what to send.
+// Apply: read the driver's command and the crash-avoidance limits, then work out what to send.
 // Limits only apply to forward motion: there is no LiDAR coverage behind the vehicle.
 // If crash avoidance has stopped updating (thread down or restarting), the vehicle is held still.
 error_state VehicleControl::processSharedMemory() {
@@ -84,48 +85,49 @@ error_state VehicleControl::processSharedMemory() {
 	double maxForwardSpeed;
 	double maxLeftSteer;
 	double maxRightSteer;
-	bool stale;
+	bool limitsStale;
 	Monitor::Enter(SM_CA_->lockObject);
 	try {
 		maxForwardSpeed = SM_CA_->maxForwardSpeed;
 		maxLeftSteer = SM_CA_->maxLeftSteer;
 		maxRightSteer = SM_CA_->maxRightSteer;
 		pathClearance_ = SM_CA_->pathClearance;
-		stale = SM_CA_->lastUpdate->ElapsedMilliseconds > CA_STALE_MS;
+		limitsStale = SM_CA_->lastUpdate->ElapsedMilliseconds > CRASH_AVOIDANCE_STALE_MS;
 	}
 	finally {
 		Monitor::Exit(SM_CA_->lockObject);
 	}
 
-	if (stale && !crashAvoidanceStale_) {
+	if (limitsStale && !crashAvoidanceStale_) {
 		Console::WriteLine("VehicleControl: crash avoidance not updating - holding the vehicle still.");
 	}
-	else if (!stale && crashAvoidanceStale_) {
+	else if (!limitsStale && crashAvoidanceStale_) {
 		Console::WriteLine("VehicleControl: crash avoidance active.");
 	}
-	crashAvoidanceStale_ = stale;
+	crashAvoidanceStale_ = limitsStale;
 
-	speed_ = Math::Max(-MAX_SPEED_MPS, Math::Min(MAX_SPEED_MPS, requestedSpeed_));
-	steering_ = Math::Max(-MAX_STEER_DEG, Math::Min(MAX_STEER_DEG, requestedSteering_));
+	sentSpeed_ = Math::Max(-MAX_SPEED_MPS, Math::Min(MAX_SPEED_MPS, requestedSpeed_));
+	sentSteering_ = Math::Max(-MAX_STEER_DEG, Math::Min(MAX_STEER_DEG, requestedSteering_));
 
-	double askedSpeed = speed_;
-	double askedSteering = steering_;
-	if (stale) {
-		speed_ = 0.0;
+	double speedBeforeLimits = sentSpeed_;
+	double steeringBeforeLimits = sentSteering_;
+	if (limitsStale) {
+		sentSpeed_ = 0.0;
 	}
-	else if (speed_ > 0.0) {
-		speed_ = Math::Min(speed_, maxForwardSpeed);
-		steering_ = Math::Max(-maxRightSteer, Math::Min(maxLeftSteer, steering_));
+	else if (sentSpeed_ > 0.0) {
+		sentSpeed_ = Math::Min(sentSpeed_, maxForwardSpeed);
+		sentSteering_ = Math::Max(-maxRightSteer, Math::Min(maxLeftSteer, sentSteering_));
 	}
-	limited_ = (speed_ != askedSpeed || steering_ != askedSteering);
+	isLimited_ = (sentSpeed_ != speedBeforeLimits || sentSteering_ != steeringBeforeLimits);
 	return error_state::SUCCESS;
 }
 
+// The command text, e.g. "# 20.000 0.500 1 #".
 String^ VehicleControl::buildCommand() {
-	return String::Format("# {0:F3} {1:F3} {2} #", steering_, speed_, watchdog_);
+	return String::Format("# {0:F3} {1:F3} {2} #", sentSteering_, sentSpeed_, watchdog_);
 }
 
-// The watchdog must change on every message or the vehicle stops.
+// Send one command. The watchdog must change on every message or the vehicle stops.
 error_state VehicleControl::communicate() {
 	try {
 		array<unsigned char>^ command = Encoding::ASCII->GetBytes(buildCommand());
@@ -144,14 +146,14 @@ error_state VehicleControl::communicate() {
 	return error_state::SUCCESS;
 }
 
-// e.g. "speed +0.73 m/s    steer 20.0 deg left"
+// Motion as text for the status display, e.g. "speed +0.73 m/s    steer 20.0 deg left"
 String^ VehicleControl::describeMotion(double speed, double steering) {
 	String^ direction = Math::Abs(steering) < 0.05 ? "straight"
 		: String::Format("{0:F1} deg {1}", Math::Abs(steering), steering > 0 ? "left" : "right");
 	return String::Format("speed {0,5:+0.00;-0.00;0.00} m/s    steer {1}", speed, direction);
 }
 
-// Live status screen: update the driving rows. Plain output: every 2 s while the driver is asking
+// Show status. Live status screen: update the driving rows. Plain output: every 2 s while the driver is asking
 // for motion, show what crash avoidance changed, and straight away (at most every 0.5 s) when
 // crash avoidance starts or stops limiting.
 void VehicleControl::printStatus() {
@@ -161,11 +163,11 @@ void VehicleControl::printStatus() {
 		}
 		statusTimer_->Restart();
 		ConsoleView::set("asked", describeMotion(requestedSpeed_, requestedSteering_), ConsoleColor::White);
-		ConsoleView::set("sent", describeMotion(speed_, steering_), limited_ ? ConsoleColor::DarkYellow : ConsoleColor::White);
+		ConsoleView::set("sent", describeMotion(sentSpeed_, sentSteering_), isLimited_ ? ConsoleColor::DarkYellow : ConsoleColor::White);
 		if (crashAvoidanceStale_) {
 			ConsoleView::set("crash", "HOLDING - crash avoidance not running, vehicle kept still", ConsoleColor::Red);
 		}
-		else if (limited_) {
+		else if (isLimited_) {
 			ConsoleView::set("crash", String::Format("LIMITING - clear path {0:F2} m", pathClearance_), ConsoleColor::DarkYellow);
 		}
 		else if (pathClearance_ >= 1.99) {
@@ -178,7 +180,7 @@ void VehicleControl::printStatus() {
 	}
 
 	long long sinceLast = statusTimer_->ElapsedMilliseconds;
-	bool changed = (limited_ != wasLimited_) && sinceLast >= MIN_STATUS_GAP_MS;
+	bool changed = (isLimited_ != wasLimited_) && sinceLast >= MIN_STATUS_GAP_MS;
 	if (sinceLast < STATUS_PERIOD_MS && !changed) {
 		return;
 	}
@@ -187,19 +189,20 @@ void VehicleControl::printStatus() {
 		return;
 	}
 	statusTimer_->Restart();
-	wasLimited_ = limited_;
+	wasLimited_ = isLimited_;
 
 	String^ note = "";
 	if (crashAvoidanceStale_) {
 		note = "  HELD (crash avoidance not running)";
 	}
-	else if (limited_) {
+	else if (isLimited_) {
 		note = String::Format("  LIMITED (clear path {0:F2} m)", pathClearance_);
 	}
 	Console::WriteLine(String::Format("VehicleControl: asked speed {0,5:F2} steer {1,6:F1} -> sent speed {2,5:F2} steer {3,6:F1}{4}",
-		requestedSpeed_, requestedSteering_, speed_, steering_, note));
+		requestedSpeed_, requestedSteering_, sentSpeed_, sentSteering_, note));
 }
 
+// Tell TMM this thread is alive.
 void VehicleControl::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -210,6 +213,7 @@ void VehicleControl::heartbeat() {
 	}
 }
 
+// True if TMM asked this thread to stop, or TMM itself has stopped.
 bool VehicleControl::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -222,6 +226,7 @@ bool VehicleControl::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
+// Main loop: connect, then send a command every 50 ms. Critical.
 void VehicleControl::threadFunction() {
 	Console::WriteLine("VehicleControl: thread started.");
 
@@ -251,8 +256,8 @@ void VehicleControl::threadFunction() {
 		}
 
 		// Final stop command before closing.
-		speed_ = 0.0;
-		steering_ = 0.0;
+		sentSpeed_ = 0.0;
+		sentSteering_ = 0.0;
 		if (status == error_state::SUCCESS) {
 			communicate();
 		}

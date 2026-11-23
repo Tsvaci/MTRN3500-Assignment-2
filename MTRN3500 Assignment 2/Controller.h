@@ -22,15 +22,15 @@ private:
     SM_VehicleControl^ SM_VC_;
 
     // Native class, so held by pointer. controllerState is native too and can't be a member (C4368).
-    ControllerInterface* controller_;
+    ControllerInterface* controllerInterface_;
 
-    double speed_;
-    double steering_;
+    double speed_;                         // m/s, + forward
+    double steering_;                      // deg, + left
     bool wasConnected_;
 
     error_state readController();                  // Fills speed_ and steering_
-    static double applyDeadzone(double value);
-    void requestShutdown();
+    static double applyDeadzone(double value);     // Small readings -> 0, otherwise clamp to -1..1
+    void requestShutdown();                        // B button
     void heartbeat();
 
     literal int INPUT_TYPE = 0;            // 0 = Xbox controller, 1 = keyboard

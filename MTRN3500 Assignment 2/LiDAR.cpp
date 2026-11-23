@@ -4,8 +4,8 @@
 LiDAR::LiDAR(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	SM_TM_ = SM_TM;
 	SM_Laser_ = SM_Laser;
-	x_ = gcnew array<double>(STANDARD_LASER_LENGTH);
-	y_ = gcnew array<double>(STANDARD_LASER_LENGTH);
+	scanX_ = gcnew array<double>(STANDARD_LASER_LENGTH);
+	scanY_ = gcnew array<double>(STANDARD_LASER_LENGTH);
 	scanCount_ = 0;
 	scansAtLastPrint_ = 0;
 	printTimer_ = Stopwatch::StartNew();
@@ -14,6 +14,7 @@ LiDAR::LiDAR(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	ReadData = nullptr;
 }
 
+// Open the TCP connection (1 s send/receive limits), then log in.
 error_state LiDAR::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -35,7 +36,7 @@ error_state LiDAR::connect(String^ hostName, int portNumber) {
 	return authenticate();
 }
 
-// Send "<zID>\n", expect "OK".
+// Log in: send "<zID>\n", expect "OK".
 error_state LiDAR::authenticate() {
 	try {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes(STUDENT_ID "\n");
@@ -62,7 +63,7 @@ error_state LiDAR::authenticate() {
 	return error_state::SUCCESS;
 }
 
-// Send <STX>sRN LMDscandata<ETX>.
+// Ask for one scan: send <STX>sRN LMDscandata<ETX>.
 error_state LiDAR::requestScan() {
 	try {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes("sRN LMDscandata");
@@ -79,7 +80,7 @@ error_state LiDAR::requestScan() {
 	return error_state::SUCCESS;
 }
 
-// The reply can arrive in several reads, so keep reading until ETX.
+// Read one reply. It can arrive in several pieces, so keep reading until ETX.
 error_state LiDAR::readTelegram(String^% telegram) {
 	int totalBytes = 0;
 	try {
@@ -115,7 +116,7 @@ error_state LiDAR::readTelegram(String^% telegram) {
 	return error_state::SUCCESS;
 }
 
-// Fields after DIST1 (hex): scale factor, scale offset, start angle, angle step, point count,
+// Decode the scan. Fields after DIST1 (hex): scale factor, scale offset, start angle, angle step, point count,
 // then one range per point in mm. 0 deg = right, 90 = ahead, 180 = left.
 // Output: x forward, y left, in metres. A range of 0 (no echo) gives (0, 0).
 // The sensor replies "sRA", the simulator "sRN"; both are accepted.
@@ -155,8 +156,8 @@ error_state LiDAR::parseScan(String^ telegram) {
 			double rangeM = distanceMm * scaleFactor / 1000.0;
 			double angleDeg = (startAngle + (double)i * angleStep) / 10000.0;
 			double angleRad = angleDeg * Math::PI / 180.0;
-			x_[i] = rangeM * Math::Sin(angleRad);
-			y_[i] = -rangeM * Math::Cos(angleRad);
+			scanX_[i] = rangeM * Math::Sin(angleRad);
+			scanY_[i] = -rangeM * Math::Cos(angleRad);
 		}
 	}
 	catch (FormatException^) {
@@ -168,6 +169,7 @@ error_state LiDAR::parseScan(String^ telegram) {
 	return error_state::SUCCESS;
 }
 
+// Request, read and decode one scan.
 error_state LiDAR::communicate() {
 	error_state result = requestScan();
 	if (result != error_state::SUCCESS) {
@@ -181,14 +183,15 @@ error_state LiDAR::communicate() {
 	return parseScan(telegram);
 }
 
+// Post the scan to SM_Laser and add 1 to its scan counter.
 error_state LiDAR::processSharedMemory() {
 	if (SM_Laser_ == nullptr) {
 		return error_state::ERR_SM;
 	}
 	Monitor::Enter(SM_Laser_->lockObject);
 	try {
-		Array::Copy(x_, SM_Laser_->x, STANDARD_LASER_LENGTH);
-		Array::Copy(y_, SM_Laser_->y, STANDARD_LASER_LENGTH);
+		Array::Copy(scanX_, SM_Laser_->x, STANDARD_LASER_LENGTH);
+		Array::Copy(scanY_, SM_Laser_->y, STANDARD_LASER_LENGTH);
 		SM_Laser_->scanNumber++;
 	}
 	finally {
@@ -197,7 +200,7 @@ error_state LiDAR::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Every 2 s: scan rate and the nearest obstacle (direction from straight ahead).
+// Print every 2 s: scan rate and the nearest obstacle (direction from straight ahead).
 // Built as one string and written once so other threads' output can't interleave.
 void LiDAR::printScan() {
 	bool view = ConsoleView::isActive();
@@ -213,7 +216,7 @@ void LiDAR::printScan() {
 		int nearest = -1;
 		double nearestRange = 0.0;
 		for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
-			double range = Math::Sqrt(x_[i] * x_[i] + y_[i] * y_[i]);
+			double range = Math::Sqrt(scanX_[i] * scanX_[i] + scanY_[i] * scanY_[i]);
 			if (range >= MIN_VALID_RANGE_M && (nearest < 0 || range < nearestRange)) {
 				nearest = i;
 				nearestRange = range;
@@ -222,7 +225,7 @@ void LiDAR::printScan() {
 		String^ nearestText = "nothing in range";
 		ConsoleColor colour = ConsoleColor::White;
 		if (nearest >= 0) {
-			double angle = Math::Atan2(y_[nearest], x_[nearest]) * 180.0 / Math::PI;   // + left of ahead
+			double angle = Math::Atan2(scanY_[nearest], scanX_[nearest]) * 180.0 / Math::PI;   // + left of ahead
 			String^ side = Math::Abs(angle) < 2.5 ? "ahead" : String::Format("{0:F0} deg {1}", Math::Abs(angle), angle > 0 ? "left" : "right");
 			nearestText = String::Format("nearest {0:F2} m, {1}", nearestRange, side);
 			if (nearestRange < 1.0) {
@@ -240,7 +243,7 @@ void LiDAR::printScan() {
 	Text::StringBuilder^ text = gcnew Text::StringBuilder();
 	text->AppendLine("LiDAR scan #" + scanCount_ + "  (" + STANDARD_LASER_LENGTH + " points, metres, x = forward, y = left)");
 	for (int i = 0; i < STANDARD_LASER_LENGTH; i++) {
-		text->Append(String::Format("{0,3}: ({1,6:F2}, {2,6:F2})   ", i, x_[i], y_[i]));
+		text->Append(String::Format("{0,3}: ({1,6:F2}, {2,6:F2})   ", i, scanX_[i], scanY_[i]));
 		if (i % 4 == 3 || i == STANDARD_LASER_LENGTH - 1) {
 			text->AppendLine();
 		}
@@ -248,6 +251,7 @@ void LiDAR::printScan() {
 	Console::Write(text->ToString());
 }
 
+// Tell TMM this thread is alive.
 void LiDAR::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -258,6 +262,7 @@ void LiDAR::heartbeat() {
 	}
 }
 
+// True if TMM asked this thread to stop, or TMM itself has stopped.
 bool LiDAR::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -270,6 +275,7 @@ bool LiDAR::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
+// Main loop: connect, then request a scan every 20 ms. Critical.
 void LiDAR::threadFunction() {
 	Console::WriteLine("LiDAR: thread started.");
 

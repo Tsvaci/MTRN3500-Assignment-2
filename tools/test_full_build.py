@@ -207,8 +207,7 @@ bad_lines = [l for l in lines if "CRC MISMATCH" in l]
 check("GNSS records decoded with CRC OK (printed every ~2 s)", len(ok_lines) >= 3, f"{len(ok_lines)} OK lines")
 check("GNSS corrupted records rejected (every 7th)", len(bad_lines) > 2, f"{len(bad_lines)} mismatches")
 if ok_lines:
-    print("   first GNSS lines:", *ok_lines[:2], sep="
-     ")
+    print("   first GNSS lines:", *ok_lines[:2], sep="\n     ")
     def matches_file(l):
         f = l.split()
         n, e, h = float(f[2]), float(f[4]), float(f[6])
