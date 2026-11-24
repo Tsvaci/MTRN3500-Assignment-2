@@ -117,7 +117,7 @@ public:
     double maxLeftSteer;        // deg, magnitude
     double maxRightSteer;       // deg, magnitude
     double pathClearance;       // m, free distance along the path being driven
-    Stopwatch^ lastUpdate;      // Restarted on every update; VC stops if it goes stale
+    Stopwatch^ lastUpdate;      // Restarted on every update. VC stops if it goes stale
 
     // Starts at "stopped": nothing moves until crash avoidance has checked a scan.
     SM_CrashAvoidance() {

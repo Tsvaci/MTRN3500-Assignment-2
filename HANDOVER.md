@@ -472,6 +472,20 @@ review guide's line numbers are updated; its description of the prints is still 
 
 ## 10. Push log (newest first)
 
+- **2026-11-24** — `full-build`: **comments only, no code change** (Aidan's request: comments sounded AI-written).
+  Aidan's own trial comments were removed except the one he marked `#KEEP` (now `LiDAR.cpp:153`, above the
+  polar-to-x,y loop, marker removed, typo fixed). 132 comment lines in 17 files rewritten in plainer wording:
+  no "Label: explanation" openers, no numbered lists, no arrows. Comments explain why where it helps. The six
+  copies of the heartbeat and shutdown-flag comments are now "Heartbeat for TMM." and "Stop if TMM says so, or
+  if TMM itself has gone quiet." File header titles read `TMM.h (Thread Management Module)`. Starter-code
+  comments untouched. **Comment style rule from now on:** plain and natural, no semicolons, no em dashes
+  (or " - " used as one); one short line where the code isn't obvious. Script check: code identical with
+  comments stripped, every file has the same line count (so all `file:line` references, including the viva
+  guide's, still hold) and CRLF kept. Builds 0 errors (3 known lib warnings). Tests not re-run (no code change).
+  The viva guide's Part 4 excerpts and its line saying comments match the guide's wording are now out of date;
+  regenerate with `..\viva-guide-source\gen_showme.py`. Printed messages still use " - " (left as is: the test
+  script may match them). Aidan's original trial comments are in `..\viva-guide-source\your-comment-edits-backup.diff`.
+
 - **2026-11-23** — `full-build`: **readability pass, no behaviour change** (Aidan's request). Clearer names
   where a first-time reader would stumble: crash avoidance's geometry letters (`w`, `a`, `R`, `cx`, `bx`...)
   now `halfWidth`, `lidarToRearAxle`, `turnRadius`, `pointFromCentreX`, `contactFromCentreX`...; scan arrays

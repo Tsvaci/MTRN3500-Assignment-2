@@ -1,6 +1,6 @@
 #pragma once
 /*
-GNSS.h - GNSS Module
+GNSS.h (GNSS Module)
 Reads Novatel BESTUTM records, checks the CRC32 and writes Northing/Easting/Height to SM_GPS.
 Non-critical.
 */
@@ -43,7 +43,7 @@ private:
     literal int READ_BUFFER_SIZE = 4096;
     literal int RECEIVE_TIMEOUT_MS = 1000;
     literal int MAX_CONSECUTIVE_TIMEOUTS = 3;
-    literal int PRINT_PERIOD_MS = 2000;           // Good records: print the latest one this often
+    literal int PRINT_PERIOD_MS = 2000;           // How often a good record gets printed
     literal int VIEW_PERIOD_MS = 200;             // Live status screen refresh
     literal int HEADER_LENGTH = 28;
     literal int BODY_LENGTH = 80;

@@ -1,6 +1,6 @@
 #pragma once
 /*
-LiDAR.h - LiDAR Module
+LiDAR.h (LiDAR Module)
 Requests scans from the SICK LMS151, converts the 361 ranges to x,y in the vehicle frame
 and writes them to SM_Laser. Critical.
 */
@@ -28,7 +28,7 @@ private:
 
     error_state authenticate();
     error_state requestScan();
-    error_state readTelegram(String^% telegram);  // One reply ("telegram"): the text between STX and ETX
+    error_state readTelegram(String^% telegram);  // SICK calls a reply a "telegram". Gives back the text between STX and ETX
     error_state parseScan(String^ telegram);
     void printScan();                             // One-line summary (or all 361 points, see PRINT_ALL_POINTS)
     void heartbeat();
@@ -37,9 +37,9 @@ private:
     literal int RECEIVE_TIMEOUT_MS = 1000;        // Under the 2 s heartbeat timeout
     literal int SEND_TIMEOUT_MS = 1000;
     literal int SCAN_PERIOD_MS = 20;              // Sensor runs at 50 Hz
-    literal int PRINT_PERIOD_MS = 2000;           // Plain output: slow enough to read
+    literal int PRINT_PERIOD_MS = 2000;           // Slow enough to actually read
     literal int VIEW_PERIOD_MS = 200;             // Live status screen refresh
-    literal bool PRINT_ALL_POINTS = false;        // true: print all 361 x,y pairs (Week 8 progress-check format)
+    literal bool PRINT_ALL_POINTS = false;        // Set to true for the full 361-point dump (the Week 8 progress-check format)
     literal double MIN_VALID_RANGE_M = 0.05;      // A range of 0 means no echo
     literal int MAX_CONSECUTIVE_TIMEOUTS = 3;
     literal unsigned char STX = 0x02;

@@ -14,7 +14,7 @@ LiDAR::LiDAR(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	ReadData = nullptr;
 }
 
-// Open the TCP connection (1 s send/receive limits), then log in.
+// Connect with 1 s timeouts so a dead robot can't hang the thread, then log in.
 error_state LiDAR::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -36,7 +36,7 @@ error_state LiDAR::connect(String^ hostName, int portNumber) {
 	return authenticate();
 }
 
-// Log in: send "<zID>\n", expect "OK".
+// Send our zID and expect "OK" back.
 error_state LiDAR::authenticate() {
 	try {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes(STUDENT_ID "\n");
@@ -63,7 +63,7 @@ error_state LiDAR::authenticate() {
 	return error_state::SUCCESS;
 }
 
-// Ask for one scan: send <STX>sRN LMDscandata<ETX>.
+// Ask for one scan. The command has to be wrapped in STX and ETX.
 error_state LiDAR::requestScan() {
 	try {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes("sRN LMDscandata");
@@ -80,7 +80,7 @@ error_state LiDAR::requestScan() {
 	return error_state::SUCCESS;
 }
 
-// Read one reply. It can arrive in several pieces, so keep reading until ETX.
+// TCP doesn't keep a reply in one piece, so keep reading until the ETX byte turns up.
 error_state LiDAR::readTelegram(String^% telegram) {
 	int totalBytes = 0;
 	try {
@@ -116,10 +116,10 @@ error_state LiDAR::readTelegram(String^% telegram) {
 	return error_state::SUCCESS;
 }
 
-// Decode the scan. Fields after DIST1 (hex): scale factor, scale offset, start angle, angle step, point count,
-// then one range per point in mm. 0 deg = right, 90 = ahead, 180 = left.
-// Output: x forward, y left, in metres. A range of 0 (no echo) gives (0, 0).
-// The sensor replies "sRA", the simulator "sRN"; both are accepted.
+// The fields after DIST1 are hex: scale factor, scale offset, start angle, angle step, point count,
+// then one range per point in mm. Angles run 0 = right, 90 = straight ahead, 180 = left.
+// We store x forward, y left, in metres. A range of 0 means no echo and ends up at (0, 0).
+// The real sensor answers "sRA" but the simulator answers "sRN", so either is accepted.
 error_state LiDAR::parseScan(String^ telegram) {
 	array<String^>^ fields = telegram->Split(' ');
 
@@ -150,7 +150,7 @@ error_state LiDAR::parseScan(String^ telegram) {
 		if (scaleFactor <= 0.0f || angleStep == 0) {
 			return error_state::ERR_INVALID_DATA;
 		}
-
+		// gives the distance and angle of each point, and turns it into an x and y coordinate
 		for (int i = 0; i < pointCount; i++) {
 			unsigned int distanceMm = Convert::ToUInt16(fields[firstDistanceIndex + i], 16);
 			double rangeM = distanceMm * scaleFactor / 1000.0;
@@ -169,7 +169,7 @@ error_state LiDAR::parseScan(String^ telegram) {
 	return error_state::SUCCESS;
 }
 
-// Request, read and decode one scan.
+// One scan: request it, read the reply, decode it.
 error_state LiDAR::communicate() {
 	error_state result = requestScan();
 	if (result != error_state::SUCCESS) {
@@ -183,7 +183,7 @@ error_state LiDAR::communicate() {
 	return parseScan(telegram);
 }
 
-// Post the scan to SM_Laser and add 1 to its scan counter.
+// Copy the scan into shared memory and bump the counter so readers can tell it's a new one.
 error_state LiDAR::processSharedMemory() {
 	if (SM_Laser_ == nullptr) {
 		return error_state::ERR_SM;
@@ -200,8 +200,8 @@ error_state LiDAR::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Print every 2 s: scan rate and the nearest obstacle (direction from straight ahead).
-// Built as one string and written once so other threads' output can't interleave.
+// Every 2 s, print the scan rate and the nearest point (direction measured from straight ahead).
+// It's built as one string first so another thread can't print in the middle of it.
 void LiDAR::printScan() {
 	bool view = ConsoleView::isActive();
 	if (printTimer_->ElapsedMilliseconds < (view ? VIEW_PERIOD_MS : PRINT_PERIOD_MS)) {
@@ -251,7 +251,7 @@ void LiDAR::printScan() {
 	Console::Write(text->ToString());
 }
 
-// Tell TMM this thread is alive.
+// Heartbeat for TMM.
 void LiDAR::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -262,7 +262,7 @@ void LiDAR::heartbeat() {
 	}
 }
 
-// True if TMM asked this thread to stop, or TMM itself has stopped.
+// Stop if TMM says so, or if TMM itself has gone quiet.
 bool LiDAR::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -275,7 +275,7 @@ bool LiDAR::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
-// Main loop: connect, then request a scan every 20 ms. Critical.
+// Connect, then ask for a scan every 20 ms. Critical: if this thread ends, TMM shuts everything down.
 void LiDAR::threadFunction() {
 	Console::WriteLine("LiDAR: thread started.");
 
@@ -309,7 +309,7 @@ void LiDAR::threadFunction() {
 				if (status == error_state::ERR_CONNECTION) {
 					break;
 				}
-				// Connected but silent: stop so TMM sees the missing heartbeat.
+				// Still connected but nothing's coming back. Give up so TMM notices the missing heartbeat.
 				if (status == error_state::ERR_TIMEOUT && ++consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
 					Console::WriteLine("LiDAR: no data for " + consecutiveTimeouts + " requests in a row - giving up.");
 					break;

@@ -1,6 +1,6 @@
 #pragma once
 /*
-VC.h - Vehicle Control Module
+VC.h (Vehicle Control Module)
 Takes the driver's speed and steering from SM_VehicleControl, caps them to the crash-avoidance
 limits in SM_CrashAvoidance and sends "# <steer> <speed> <wdog> #" to the vehicle. Critical.
 */

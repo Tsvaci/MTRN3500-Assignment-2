@@ -50,7 +50,7 @@ void ConsoleView::stop() {
 	}
 }
 
-// True while the status screen is showing (modules then post with set() instead of printing).
+// While this is true, modules post with set() instead of printing.
 bool ConsoleView::isActive() {
 	return active_;
 }
@@ -105,7 +105,7 @@ void ConsoleView::addChar(wchar_t c) {
 	}
 }
 
-// Redraw, 4 times a second.
+// Timer callback, 4 times a second.
 void ConsoleView::onTimer(Object^ unused) {
 	if (!Monitor::TryEnter(lock_)) {
 		return;                                  // Previous redraw still running
@@ -115,7 +115,7 @@ void ConsoleView::onTimer(Object^ unused) {
 			render();
 		}
 	}
-	catch (Exception^) {}                        // e.g. window being resized - just try again next time
+	catch (Exception^) {}                        // e.g. the window is being resized. Just try again next time
 	finally {
 		Monitor::Exit(lock_);
 	}

@@ -15,9 +15,9 @@ Controller::~Controller() {
 	controllerInterface_ = nullptr;
 }
 
-// Read the controller. Speed: right trigger forward, left trigger reverse (keyboard mode: right stick up/down).
-// Steering: right stick left/right. Stick right is +X, but steering is + to the left, so it is negated.
-// Disconnected controller -> zero speed and steering.
+// Speed is right trigger minus left trigger (in keyboard mode it's the right stick up/down).
+// The stick reads + for right, but our steering is + for left, hence the minus sign.
+// If the controller is unplugged, speed and steering go to zero.
 error_state Controller::readController() {
 	controllerState state = controllerInterface_->GetState();
 
@@ -53,7 +53,7 @@ error_state Controller::readController() {
 	return error_state::SUCCESS;
 }
 
-// Ignore small stick/trigger readings so a resting stick doesn't creep the vehicle.
+// Sticks never sit at exactly zero, so ignore small readings or the robot would creep.
 double Controller::applyDeadzone(double value) {
 	if (Math::Abs(value) < DEADZONE) {
 		return 0.0;
@@ -61,7 +61,7 @@ double Controller::applyDeadzone(double value) {
 	return Math::Max(-1.0, Math::Min(1.0, value));
 }
 
-// Post speed and steering to SM_VehicleControl.
+// Write speed and steering to SM_VehicleControl.
 error_state Controller::processSharedMemory() {
 	if (SM_VC_ == nullptr) {
 		return error_state::ERR_SM;
@@ -77,7 +77,7 @@ error_state Controller::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Ask TMM to shut down; TMM then stops every thread, the same path as the 'q' key.
+// B button. We only set TMM's flag and TMM does the actual shutdown, same as pressing q.
 void Controller::requestShutdown() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -91,7 +91,7 @@ void Controller::requestShutdown() {
 	}
 }
 
-// Tell TMM this thread is alive.
+// Heartbeat for TMM.
 void Controller::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -102,7 +102,7 @@ void Controller::heartbeat() {
 	}
 }
 
-// True if TMM asked this thread to stop, or TMM itself has stopped.
+// Stop if TMM says so, or if TMM itself has gone quiet.
 bool Controller::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -115,7 +115,7 @@ bool Controller::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
-// Main loop: read the controller every 20 ms. Critical.
+// Read the controller every 20 ms. Critical.
 void Controller::threadFunction() {
 	Console::WriteLine("Controller: thread started (" + (INPUT_TYPE == 1 ? "keyboard" : "Xbox controller") + " mode).");
 
@@ -142,7 +142,7 @@ void Controller::threadFunction() {
 		Console::WriteLine("Controller: unexpected error - " + e->Message);
 	}
 
-	// Leave a stop command behind.
+	// Leave zero speed on the board on the way out.
 	speed_ = 0.0;
 	steering_ = 0.0;
 	processSharedMemory();

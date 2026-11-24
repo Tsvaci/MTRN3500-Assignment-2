@@ -20,7 +20,7 @@ VehicleControl::VehicleControl(SM_ThreadManagement^ SM_TM, SM_VehicleControl^ SM
 	ReadData = nullptr;
 }
 
-// Open the TCP connection (1 s send/receive limits), then log in.
+// Connect with 1 s timeouts so a dead robot can't hang the thread, then log in.
 error_state VehicleControl::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -38,7 +38,7 @@ error_state VehicleControl::connect(String^ hostName, int portNumber) {
 	return authenticate();
 }
 
-// Log in, same as the LiDAR: send "<zID>\n", expect "OK".
+// Same login as the LiDAR. Send our zID and expect "OK" back.
 error_state VehicleControl::authenticate() {
 	try {
 		array<unsigned char>^ request = Encoding::ASCII->GetBytes(STUDENT_ID "\n");
@@ -65,9 +65,9 @@ error_state VehicleControl::authenticate() {
 	return error_state::SUCCESS;
 }
 
-// Apply: read the driver's command and the crash-avoidance limits, then work out what to send.
-// Limits only apply to forward motion: there is no LiDAR coverage behind the vehicle.
-// If crash avoidance has stopped updating (thread down or restarting), the vehicle is held still.
+// Takes the driver's command and caps it to the crash-avoidance limits before it goes out.
+// The limits only apply going forward, since there's no LiDAR looking backwards.
+// If crash avoidance stops updating (crashed or being restarted), we hold the vehicle still.
 error_state VehicleControl::processSharedMemory() {
 	if (SM_VC_ == nullptr || SM_CA_ == nullptr) {
 		return error_state::ERR_SM;
@@ -127,14 +127,14 @@ String^ VehicleControl::buildCommand() {
 	return String::Format("# {0:F3} {1:F3} {2} #", sentSteering_, sentSpeed_, watchdog_);
 }
 
-// Send one command. The watchdog must change on every message or the vehicle stops.
+// Send one command and flip the watchdog. If the watchdog ever stops changing, the robot stops.
 error_state VehicleControl::communicate() {
 	try {
 		array<unsigned char>^ command = Encoding::ASCII->GetBytes(buildCommand());
 		Stream->Write(command, 0, command->Length);
 		watchdog_ = 1 - watchdog_;
 
-		// Discard anything the server sends back so its buffer can't fill.
+		// The server can send things back. Read and drop them so its buffer doesn't fill up.
 		while (Client->Available > 0) {
 			Stream->Read(ReadData, 0, Math::Min(Client->Available, ReadData->Length));
 		}
@@ -153,9 +153,9 @@ String^ VehicleControl::describeMotion(double speed, double steering) {
 	return String::Format("speed {0,5:+0.00;-0.00;0.00} m/s    steer {1}", speed, direction);
 }
 
-// Show status. Live status screen: update the driving rows. Plain output: every 2 s while the driver is asking
-// for motion, show what crash avoidance changed, and straight away (at most every 0.5 s) when
-// crash avoidance starts or stops limiting.
+// On the status screen this just updates the driving rows. In plain output it prints a line
+// every 2 s while the driver is asking for motion, and straight away (but no more than every
+// 0.5 s) when crash avoidance starts or stops limiting.
 void VehicleControl::printStatus() {
 	if (ConsoleView::isActive()) {
 		if (statusTimer_->ElapsedMilliseconds < VIEW_PERIOD_MS) {
@@ -202,7 +202,7 @@ void VehicleControl::printStatus() {
 		requestedSpeed_, requestedSteering_, sentSpeed_, sentSteering_, note));
 }
 
-// Tell TMM this thread is alive.
+// Heartbeat for TMM.
 void VehicleControl::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -213,7 +213,7 @@ void VehicleControl::heartbeat() {
 	}
 }
 
-// True if TMM asked this thread to stop, or TMM itself has stopped.
+// Stop if TMM says so, or if TMM itself has gone quiet.
 bool VehicleControl::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -226,7 +226,7 @@ bool VehicleControl::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
-// Main loop: connect, then send a command every 50 ms. Critical.
+// Connect, then send a command every 50 ms. Critical.
 void VehicleControl::threadFunction() {
 	Console::WriteLine("VehicleControl: thread started.");
 
@@ -255,7 +255,7 @@ void VehicleControl::threadFunction() {
 			Thread::Sleep(SEND_PERIOD_MS);
 		}
 
-		// Final stop command before closing.
+		// Send one last stop before closing.
 		sentSpeed_ = 0.0;
 		sentSteering_ = 0.0;
 		if (status == error_state::SUCCESS) {

@@ -1,6 +1,6 @@
 #pragma once
 /*
-Display.h - Display Module
+Display.h (Display Module)
 Sends the latest scan, in millimetres, to the MATLAB display engine (127.0.0.1:28000). Critical.
 */
 

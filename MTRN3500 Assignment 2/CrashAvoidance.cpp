@@ -18,8 +18,8 @@ CrashAvoidance::CrashAvoidance(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser, S
 	drivenPathClearance_ = 0.0;
 }
 
-// Read inputs: copy the scan and the driver's command; the scan is stale if its counter
-// hasn't changed for SCAN_STALE_MS (or no scan has arrived yet).
+// Copy the scan and the driver's command. The scan counts as stale if its counter hasn't moved
+// for SCAN_STALE_MS, or if we haven't had a scan at all yet.
 error_state CrashAvoidance::readInputs() {
 	if (SM_Laser_ == nullptr || SM_VC_ == nullptr || SM_CA_ == nullptr) {
 		return error_state::ERR_SM;
@@ -60,12 +60,12 @@ error_state CrashAvoidance::readInputs() {
 	return error_state::SUCCESS;
 }
 
-// Predict the path: how far the vehicle travels (at the rear axle) before its body reaches the
-// point, or -1 if it would miss it.
-// Straight: a corridor of half-width + margin each side. Turning: the vehicle circles a centre
-// level with the rear axle, turn radius = wheelbase / tan(steer), and its front edge and inner
-// side sweep a ring around that centre.
-// Frame: x forward, y left, origin at the LiDAR (front centre). Positive steer = left.
+// How far the vehicle travels (measured at the rear axle) before its body hits this point.
+// Returns -1 if it would miss it.
+// Going straight, the body sweeps a corridor of half-width + margin each side. When turning, the
+// vehicle circles a point level with the rear axle at radius wheelbase / tan(steer), and its
+// front edge and inner side sweep out a ring around that point.
+// Coordinates are x forward, y left, from the LiDAR at the front centre. Positive steer is left.
 double CrashAvoidance::distanceAlongPath(double pointX, double pointY, double steerDeg) {
 	double halfWidth = VEHICLE_HALF_WIDTH_M + SIDE_MARGIN_M;
 	double lidarToRearAxle = LIDAR_AHEAD_OF_REAR_AXLE_M;
@@ -77,7 +77,7 @@ double CrashAvoidance::distanceAlongPath(double pointX, double pointY, double st
 		return pointX;
 	}
 
-	// Work as if turning left; a right turn is the mirror image (flip y).
+	// Work as if turning left. A right turn is the mirror image (flip y).
 	double turnRadius = Math::Abs(WHEELBASE_M / Math::Tan(steerDeg * Math::PI / 180.0));
 	double mirroredY = (steerDeg > 0.0) ? pointY : -pointY;
 
@@ -92,7 +92,7 @@ double CrashAvoidance::distanceAlongPath(double pointX, double pointY, double st
 		return -1.0;
 	}
 
-	// The part of the body that will touch the point: the front edge if it reaches that radius,
+	// Which part of the body touches the point first: the front edge if it reaches that far out,
 	// otherwise the inner side.
 	double contactX, contactY;
 	double innerCornerRadius = Math::Sqrt(lidarToRearAxle * lidarToRearAxle + (turnRadius - halfWidth) * (turnRadius - halfWidth));
@@ -116,8 +116,8 @@ double CrashAvoidance::distanceAlongPath(double pointX, double pointY, double st
 	return turnRadius * turnAngle;
 }
 
-// Measure clearance: free distance along the path for a steering angle, capped at LOOKAHEAD_M.
-// Uses the second-nearest point so a single stray reading can't stop the vehicle.
+// Clear distance along the path for one steering angle, up to LOOKAHEAD_M.
+// We use the second-nearest point so one stray reading can't stop the vehicle.
 double CrashAvoidance::pathClearance(double steerDeg) {
 	double nearest = LOOKAHEAD_M;
 	double secondNearest = LOOKAHEAD_M;
@@ -142,9 +142,9 @@ double CrashAvoidance::pathClearance(double steerDeg) {
 	return secondNearest;
 }
 
-// Limit speed: full speed beyond CAUTION_DISTANCE_M, zero at STOP_DISTANCE_M, and an even
-// braking curve in between (v^2 proportional to distance left). Faster requests set aside
-// more reaction distance, so the vehicle starts slowing earlier.
+// Full speed beyond CAUTION_DISTANCE_M, zero at STOP_DISTANCE_M, and in between the speed you could
+// brake evenly from (v^2 goes with the distance left). Faster requests get more reaction distance
+// taken off, so they start slowing down earlier.
 double CrashAvoidance::speedLimitFor(double clearance) {
 	double reactionDistance = Math::Max(0.0, requestedSpeed_) * REACTION_TIME_S;
 	double brakingDistance = clearance - reactionDistance - STOP_DISTANCE_M;
@@ -155,11 +155,11 @@ double CrashAvoidance::speedLimitFor(double clearance) {
 	return MAX_SPEED_MPS * Math::Min(1.0, Math::Sqrt(fractionOfSlowingZone));
 }
 
-// Ease steering, then limit speed.
-// 1. Steering: if straight ahead is clear for CAUTION_DISTANCE_M, each side may steer up to the
-//    sharpest angle (5 deg steps) whose path is also clear that far. If straight ahead is
-//    blocked, steering is left free so the driver can steer out.
-// 2. Speed: from the clearance along the path the vehicle will actually take.
+// Works out the limits in two steps.
+// Steering: if straight ahead is clear for CAUTION_DISTANCE_M, each side can steer up to the
+// sharpest angle (in 5 deg steps) that's also clear that far. If straight ahead is already
+// blocked, steering is left free so the driver can steer out of it.
+// Speed: based on the clearance along the path the vehicle is actually going to take.
 void CrashAvoidance::computeLimits() {
 	if (scanStale_) {
 		maxForwardSpeed_ = 0.0;
@@ -191,7 +191,7 @@ void CrashAvoidance::computeLimits() {
 	maxForwardSpeed_ = speedLimitFor(drivenPathClearance_);
 }
 
-// Publish: write the limits and a timestamp to SM_CrashAvoidance for VC.
+// Write the limits out for VC, with a fresh timestamp so VC knows they're current.
 void CrashAvoidance::publishLimits() {
 	Monitor::Enter(SM_CA_->lockObject);
 	try {
@@ -206,7 +206,7 @@ void CrashAvoidance::publishLimits() {
 	}
 }
 
-// One cycle: read inputs, work out the limits, publish them.
+// Read the inputs, work out the limits, publish them.
 error_state CrashAvoidance::processSharedMemory() {
 	error_state result = readInputs();
 	if (result != error_state::SUCCESS) {
@@ -217,7 +217,7 @@ error_state CrashAvoidance::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Tell TMM this thread is alive.
+// Heartbeat for TMM.
 void CrashAvoidance::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -228,7 +228,7 @@ void CrashAvoidance::heartbeat() {
 	}
 }
 
-// True if TMM asked this thread to stop, or TMM itself has stopped.
+// Stop if TMM says so, or if TMM itself has gone quiet.
 bool CrashAvoidance::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -241,8 +241,8 @@ bool CrashAvoidance::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
-// Main loop, every 20 ms. Non-critical: if this thread dies, its limits go stale, VC holds the
-// vehicle, and TMM restarts it.
+// Runs every 20 ms. It's non-critical because if this thread dies its limits go stale, VC holds
+// the vehicle still, and TMM restarts it.
 void CrashAvoidance::threadFunction() {
 	Console::WriteLine("CrashAvoidance: thread started.");
 

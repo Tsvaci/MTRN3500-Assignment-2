@@ -10,7 +10,7 @@ Display::Display(SM_ThreadManagement^ SM_TM, SM_Laser^ SM_Laser) {
 	ReadData = nullptr;
 }
 
-// Open the TCP connection to the MATLAB display engine.
+// runner.m has to be running in MATLAB before we start, or this fails.
 error_state Display::connect(String^ hostName, int portNumber) {
 	try {
 		Client = gcnew TcpClient(hostName, portNumber);
@@ -27,9 +27,9 @@ error_state Display::connect(String^ hostName, int portNumber) {
 	return error_state::SUCCESS;
 }
 
-// Copy the latest scan and convert it. SM_Laser is in metres, x forward, y left. The display engine wants millimetres and draws
-// its X array across the screen (+ to the right) and its Y array as distance ahead, so
-// display X = -y (right) and display Y = x (forward).
+// SM_Laser is in metres with x forward and y left. The MATLAB engine wants millimetres, with
+// its X array going across the screen (+ right) and Y going forward. So display X = -y and
+// display Y = x. Sending x and y as they are gives a plot turned 90 degrees.
 error_state Display::processSharedMemory() {
 	if (SM_Laser_ == nullptr) {
 		return error_state::ERR_SM;
@@ -47,7 +47,7 @@ error_state Display::processSharedMemory() {
 	return error_state::SUCCESS;
 }
 
-// Provided routine: each array is sent as its raw bytes (361 doubles = 2888 bytes), X then Y.
+// The routine from the spec. Each array goes as raw bytes (361 doubles = 2888 bytes), X first.
 void Display::sendDisplayData(array<double>^ xData, array<double>^ yData) {
 	array<Byte>^ dataX = gcnew array<Byte>(xData->Length * sizeof(double));
 	Buffer::BlockCopy(xData, 0, dataX, 0, dataX->Length);
@@ -71,7 +71,7 @@ error_state Display::communicate() {
 	return error_state::SUCCESS;
 }
 
-// Tell TMM this thread is alive.
+// Heartbeat for TMM.
 void Display::heartbeat() {
 	Monitor::Enter(SM_TM_->lockObject);
 	try {
@@ -82,7 +82,7 @@ void Display::heartbeat() {
 	}
 }
 
-// True if TMM asked this thread to stop, or TMM itself has stopped.
+// Stop if TMM says so, or if TMM itself has gone quiet.
 bool Display::getShutdownFlag() {
 	bool shutdownRequested = false;
 	Monitor::Enter(SM_TM_->lockObject);
@@ -95,7 +95,7 @@ bool Display::getShutdownFlag() {
 	return shutdownRequested || tmmHasStopped();
 }
 
-// Main loop: connect, then send the scan every 100 ms. Critical.
+// Connect, then send the scan every 100 ms. Critical.
 void Display::threadFunction() {
 	Console::WriteLine("Display: thread started.");
 

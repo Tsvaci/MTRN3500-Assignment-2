@@ -1,6 +1,6 @@
 #pragma once
 /*
-TMM.h - Thread Management Module
+TMM.h (Thread Management Module)
 Creates shared memory, starts and monitors all module threads, restarts non-critical
 threads and handles shutdown.
 */
@@ -19,9 +19,9 @@ public:
     ThreadManagement();
 
     error_state setupSharedMemory();
-    error_state processSharedMemory() override;   // Refresh the TMM alive signal
+    error_state processSharedMemory() override;   // Keeps TMM's own alive stopwatch fresh
     void shutdownModules();
-    bool getShutdownFlag() override;              // Shutdown requested by another module
+    bool getShutdownFlag() override;              // Set when the Controller asks for a shutdown (B button)
     void threadFunction() override;
     bool endedWithCriticalFailure();              // For the program's exit code
 
@@ -53,7 +53,7 @@ private:
     bool shutdownKeyPressed();
     static String^ moduleName(uint8_t moduleBit);
 
-    // Inputs, then crash avoidance, then the actuator, display, and GNSS last.
+    // Inputs first, then crash avoidance so it's running before VC can drive. GNSS last, nothing needs it.
     static array<uint8_t>^ MODULE_START_ORDER = gcnew array<uint8_t> {
         bit_CONTROLLER, bit_LASER, bit_CRASHAVOIDANCE, bit_VC, bit_DISPLAY, bit_GPS
     };

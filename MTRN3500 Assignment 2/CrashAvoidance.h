@@ -1,6 +1,6 @@
 #pragma once
 /*
-CrashAvoidance.h - Crash Avoidance Module
+CrashAvoidance.h (Crash Avoidance Module)
 Combines the LiDAR scan with the driver's speed and steering to work out how fast the vehicle
 may go forward and how far it may steer each way. Publishes the limits in SM_CrashAvoidance,
 which VC applies. Non-critical.

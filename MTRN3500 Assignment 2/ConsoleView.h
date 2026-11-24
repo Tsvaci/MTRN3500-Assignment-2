@@ -1,6 +1,6 @@
 #pragma once
 /*
-ConsoleView.h - live status screen for the console (not one of the assigned modules; display helper only).
+ConsoleView.h (live status screen for the console). Not one of the assigned modules, just a display helper.
 
 When the program runs in a console window, the screen is redrawn in place 4 times a second:
 thread status, driving, crash avoidance, LiDAR, GNSS, and the most recent event messages.
