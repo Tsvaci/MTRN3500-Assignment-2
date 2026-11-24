@@ -257,7 +257,7 @@ void GNSS::threadFunction() {
 	Console::WriteLine("GNSS: thread shut down after " + recordCount_ + " records.");
 }
 
-// CRC32 code from the spec, with the else branch fixed (the spec's version leaves it empty).
+// CRC32 code from the spec, with the else branch fixed.
 unsigned long GNSS::CRC32Value(int i) {
 	unsigned long ulCRC = i;
 	for (int j = 8; j > 0; j--) {
